@@ -6,12 +6,33 @@ import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User, Sparkles } f
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useSession, signOut } from 'next-auth/react'; // Import signOut
+import { useRouter } from 'next/navigation';
+import { Loader2, LogOut } from 'lucide-react'; // Import LogOut
 
 const Dashboard = () => {
   // Add real-time analytics state
   const [realTimeAnalytics, setRealTimeAnalytics] = useState(null);
   const [joke, setJoke] = useState('');
   const [fact, setFact] = useState('');
+
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+    }
+  }, [status, router]);
+
+  // Show a loading screen while session is being verified
+  if (status === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="animate-spin text-lime-500" size={64} />
+      </div>
+    );
+  }
 
   // Fetch analytics every 2 seconds
   useEffect(() => {
@@ -91,12 +112,15 @@ const Dashboard = () => {
       <div className="w-64 bg-lime-200 flex flex-col">
         <div className="bg-gray-900 text-white p-6 text-center">
           <h1 className="text-2xl font-black tracking-wide">DASHBOARD</h1>
-          <p className="text-sm font-bold text-lime-400 mt-2">{params.username}</p>
+          {/* --- MODIFICATION #1: Show Session Name --- */}
+          <p className="text-sm font-bold text-lime-400 mt-2">
+            {session?.user?.name || params.username}
+          </p>
         </div>
 
         <nav className="flex-1 py-4">
           <Link
-            href={`/Prateek/dashboard`}
+            href={`/${params.username}/dashboard`}
             onClick={() => setActiveTab('home')}
             className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'home' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
               }`}
@@ -159,8 +183,9 @@ const Dashboard = () => {
             <h1 className="text-4xl font-black text-transparent bg-clip-text bg-linear-to-r from-gray-900 to-lime-600 animate-pulse">
               WELCOME BACK!
             </h1>
+            {/* --- MODIFICATION #2: Show Session Name (Uppercase) --- */}
             <h2 className="text-4xl font-black text-transparent bg-clip-text bg-linear-to-r from-lime-600 to-lime-400">
-              {params.username || 'USER'}
+              {(session?.user?.name || params.username)?.toUpperCase() || 'USER'}
             </h2>
           </div>
           <div className="flex items-center gap-4">
@@ -169,7 +194,12 @@ const Dashboard = () => {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
             </button>
-            <button className="px-8 py-3 bg-linear-to-r from-lime-500 to-lime-600 text-white font-black text-xl rounded-full hover:from-lime-600 hover:to-lime-700 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 transform">
+            {/* --- MODIFICATION #3: Add signOut onClick and styling --- */}
+            <button
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="flex items-center gap-2 px-8 py-3 bg-linear-to-r from-lime-500 to-lime-600 text-white font-black text-xl rounded-full hover:from-lime-600 hover:to-lime-700 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 transform"
+            >
+              <LogOut size={20} />
               LOG OUT
             </button>
           </div>
