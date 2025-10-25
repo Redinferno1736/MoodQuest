@@ -1,4 +1,7 @@
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def get_random_joke():
     url = "https://v2.jokeapi.dev/joke/any"
@@ -34,5 +37,5 @@ def get_one_fact(api_key):
 
 if __name__ == "__main__":
     print(get_random_joke())
-    api_key = "bNnq+iUY1JqBvm5CzS4DcQ==KfjZtD8ZFa4sl8af"
+    api_key = NINJA_API
     print(get_one_fact(api_key))
