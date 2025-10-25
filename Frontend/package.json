@@ -19,6 +19,8 @@
     "recharts": "^3.3.0"
   },
   "devDependencies": {
+    "@splinetool/react-spline": "^4.1.0",
+    "@splinetool/runtime": "^1.10.86",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.0.0",
