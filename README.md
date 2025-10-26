@@ -1,5 +1,7 @@
 # MoodQuest - Real-time Facial Expression and Mood Analysis
 
+### Video Demo - https://drive.google.com/drive/folders/17Na-Pc4KGolHg-C5J_kyCj1GSRuipBlg?usp=sharing
+
 ## Project Overview
 
 MoodQuest is an AI-powered web application for real-time facial landmark and micro-expression analysis to detect users' mood and stress levels. It features a dashboard with visualizations, mental health quick quizzes, personalized insights, and a supportive pet companion chatbot.
