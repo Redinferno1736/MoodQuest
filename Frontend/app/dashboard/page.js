@@ -3,35 +3,17 @@ import { api } from '@/lib/api';
 import React, { useState, useEffect } from 'react';
 import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { Loader2, LogOut } from 'lucide-react';
 
 const Dashboard = () => {
-  // Your existing auth hooks
   const { data: session, status } = useSession();
   const router = useRouter();
-  const params = useParams();
 
-  // NEW: State for real user data
   const [userSessions, setUserSessions] = useState([]);
-  const [monthlyStats, setMonthlyStats] = useState({
-    happy: 0,
-    sad: 0,
-    stressed: 0
-  });
-  useEffect(() => {
-  if (session) {
-    console.log("FULL SESSION OBJECT:", session);
-    console.log("SESSION.USER:", session.user);
-    console.log("SESSION.USER.ID:", session.user?.id);
-    console.log("SESSION.USER.EMAIL:", session.user?.email);
-  }
-}, [session]);
-
-
-  // Keep your existing state
+  const [monthlyStats, setMonthlyStats] = useState({ happy: 0, sad: 0, stressed: 0 });
   const [realTimeAnalytics, setRealTimeAnalytics] = useState(null);
   const [joke, setJoke] = useState('');
   const [fact, setFact] = useState('');
@@ -39,149 +21,118 @@ const Dashboard = () => {
   const [mounted, setMounted] = useState(false);
   const [statsVisible, setStatsVisible] = useState(false);
 
+  // ─── Auth guard ───────────────────────────────────────────────────────────
   if (status === "loading") {
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <Loader2 className="w-12 h-12 animate-spin text-lime-600" />
-    </div>
-  );
-}
-
-  // Auth redirect (keep your existing code)
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/login');
-    }
-  }, [status, router]);
-
-  // NEW: Load user data from storage
-useEffect(() => {
-  if (!session?.user?.id) return;
-
-  const loadUserData = async () => {
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/session/list?user_id=${session.user.id}`
-      );
-      
-      // ADD THIS CHECK
-      if (!res.ok) {
-        console.error("Failed to fetch sessions:", res.status);
-        return;
-      }
-      
-      const sessions = await res.json();
-      
-      // ADD VALIDATION
-      if (!Array.isArray(sessions)) {
-        console.error("Invalid session data format");
-        return;
-      }
-      
-      setUserSessions(sessions);
-      calculateMonthlyStats(sessions);
-    } catch (err) {
-      console.error("Failed to load sessions", err);
-      setUserSessions([]); // ADD DEFAULT
-    }
-  };
-
-  loadUserData();
-}, [session]);
-
-
-
-  // NEW: Calculate monthly statistics
-const calculateMonthlyStats = (sessions) => {
-  const now = new Date();
-  const m = now.getMonth();
-  const y = now.getFullYear();
-
-  const stats = { happy: 0, sad: 0, stressed: 0 };
-
-  sessions.forEach((s) => {
-    // ADD VALIDATION
-    if (!s.timestamp) return;
-    
-    const d = new Date(s.timestamp * 1000);
-    
-    if (d.getMonth() === m && d.getFullYear() === y) {
-      const e = (s.dominant_emotion || "").toLowerCase();
-      
-      if (e === "happy") {
-        stats.happy++;
-      } else if (e === "sad") {
-        stats.sad++;
-      } else if (e === "angry" || e === "fear" || e === "disgust") {
-        stats.stressed++;
-      }
-      // Neutral and Surprise don't increment any counter
-    }
-  });
-
-  setMonthlyStats(stats);
-};
-
-
-  // NEW: Format chart data from real user sessions
-const getChartData = () => {
-  if (!userSessions || userSessions.length === 0) {
-    return [{ session: 1, performance: 0, mood: 0, feedback: 0 }];
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-lime-600" />
+      </div>
+    );
   }
 
-  const recent = userSessions.slice(-10);
+  useEffect(() => {
+    if (status === 'unauthenticated') router.push('/auth/login');
+  }, [status, router]);
 
-  return recent.map((s, i) => {
-    const emotions = s.emotions || {};
-    const emotionValues = Object.values(emotions);
-    
-    // FIX DIVISION BY ZERO
-    const avg = emotionValues.length > 0
-      ? emotionValues.reduce((a, b) => a + b, 0) / emotionValues.length
-      : 0;
+  // ─── Load session list from backend ───────────────────────────────────────
+  useEffect(() => {
+    if (!session?.user?.id) return;
 
-    const positive = (emotions.happy || 0) + (emotions.surprise || 0);
+    const loadUserData = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/session/list?user_id=${session.user.id}`
+        );
+        if (!res.ok) { console.error("Failed to fetch sessions:", res.status); return; }
 
-    return {
-      session: i + 1,
-      performance: Math.round(positive * 100),
-      mood: Math.round(avg * 5 * 10) / 10,
-      feedback: Math.round(avg * 100),
+        const sessions = await res.json();
+        if (!Array.isArray(sessions)) { console.error("Invalid session data format"); return; }
+
+        setUserSessions(sessions);
+        calculateMonthlyStats(sessions);
+      } catch (err) {
+        console.error("Failed to load sessions", err);
+        setUserSessions([]);
+      }
     };
-  });
-};
 
+    loadUserData();
+  }, [session]);
 
-  // Keep your existing effects for analytics, content, and animations
-useEffect(() => {
-  if (!session?.user?.id) return;
+  // ─── Monthly stats from dominant_emotion ──────────────────────────────────
+  const calculateMonthlyStats = (sessions) => {
+    const now = new Date();
+    const m = now.getMonth();
+    const y = now.getFullYear();
+    const stats = { happy: 0, sad: 0, stressed: 0 };
 
-  const fetchAnalytics = async () => {
-    try {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/analytics?user_id=${session.user.id}`
-      );
-      const data = await res.json();
-      setRealTimeAnalytics(data);
-    } catch (err) {
-      console.error("Analytics error", err);
-    }
+    sessions.forEach((s) => {
+      if (!s.timestamp) return;
+      const d = new Date(s.timestamp * 1000);
+      if (d.getMonth() !== m || d.getFullYear() !== y) return;
+
+      const e = (s.dominant_emotion || "").toLowerCase();
+      if (e === "happy") stats.happy++;
+      else if (e === "sad") stats.sad++;
+      else if (["angry", "fear", "disgust"].includes(e)) stats.stressed++;
+    });
+
+    setMonthlyStats(stats);
   };
 
-  fetchAnalytics();
-  const interval = setInterval(fetchAnalytics, 5000);
-  return () => clearInterval(interval);
-}, [session]);
+  // ─── Chart data from real sessions ────────────────────────────────────────
+  // Uses emotion_distribution (object of { emotion: count }) stored per session.
+  const getChartData = () => {
+    if (!userSessions || userSessions.length === 0) {
+      return [{ session: 1, performance: 0, mood: 0, feedback: 0 }];
+    }
 
+    const recent = userSessions.slice(-10);
 
+    return recent.map((s, i) => {
+      const dist = s.emotion_distribution || {};
+      const totalFrames = s.total_frames || 1;
 
+      // Positivity = (Happy + Surprise) / total frames * 100
+      const positiveCount = (dist["Happy"] || 0) + (dist["Surprise"] || 0);
+      const performance = Math.round((positiveCount / totalFrames) * 100);
+
+      // Mood rating: avg_confidence scaled to 0-5
+      const mood = Math.round((s.avg_confidence || 0) * 5 * 10) / 10;
+
+      // Overall well-being: avg_confidence * 100
+      const feedback = Math.round((s.avg_confidence || 0) * 100);
+
+      return { session: i + 1, performance, mood, feedback };
+    });
+  };
+
+  // ─── Poll analytics every 30 s (was 5 s — too aggressive) ────────────────
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const fetchAnalytics = async () => {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/analytics?user_id=${session.user.id}`
+        );
+        const data = await res.json();
+        setRealTimeAnalytics(data);
+      } catch (err) {
+        console.error("Analytics error", err);
+      }
+    };
+
+    fetchAnalytics();
+    const interval = setInterval(fetchAnalytics, 30000);
+    return () => clearInterval(interval);
+  }, [session]);
+
+  // ─── Joke + Fact ──────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchContent = async () => {
       try {
-        const [jokeData, factData] = await Promise.all([
-          api.getJoke(),
-          api.getFact()
-        ]);
+        const [jokeData, factData] = await Promise.all([api.getJoke(), api.getFact()]);
         setJoke(jokeData.joke);
         setFact(factData.fact);
       } catch (error) {
@@ -191,13 +142,11 @@ useEffect(() => {
     fetchContent();
   }, []);
 
+  // ─── Mount animations ─────────────────────────────────────────────────────
   useEffect(() => {
     const mountTimer = setTimeout(() => setMounted(true), 0);
     const statsTimer = setTimeout(() => setStatsVisible(true), 300);
-    return () => {
-      clearTimeout(mountTimer);
-      clearTimeout(statsTimer);
-    };
+    return () => { clearTimeout(mountTimer); clearTimeout(statsTimer); };
   }, []);
 
   if (status === 'loading') {
@@ -208,7 +157,6 @@ useEffect(() => {
     );
   }
 
-  // USE REAL DATA HERE
   const chartData = getChartData();
 
   return (
@@ -224,56 +172,48 @@ useEffect(() => {
         <div className="p-8 bg-gradient-to-r from-lime-500 to-emerald-500">
           <h1 className="text-3xl font-black text-white mb-2">DASHBOARD</h1>
           <p className="text-lime-100 font-semibold text-lg">
-            {session?.user?.name || params.username}
+            {session?.user?.name}
           </p>
         </div>
 
         <div className="flex-1 flex flex-col py-4">
-          <button
-            onClick={() => setActiveTab('home')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'home' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-              }`}
-          >
-            <Home size={24} />
-            HOME
-          </button>
 
-          <button
-            onClick={() => setActiveTab('analysis')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'analysis' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-              }`}
-          >
-            <TrendingUp size={24} />
-            ANALYSIS
-          </button>
+<Link href="/dashboard">
+  <button
+    className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white"
+  >
+    <Home size={24} />HOME
+  </button>
+</Link>
+
+<Link href="/analysis">
+  <button
+    className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300"
+  >
+    <TrendingUp size={24} />ANALYSIS
+  </button>
+</Link>
 
           <button
             onClick={() => setActiveTab('pet')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'pet' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-              }`}
+            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'pet' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
           >
-            <Heart size={24} />
-            PET SUPPORT
+            <Heart size={24} />PET SUPPORT
           </button>
-
           <button
             onClick={() => setActiveTab('settings')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-              }`}
+            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
           >
-            <Settings size={24} />
-            SETTINGS
+            <Settings size={24} />SETTINGS
           </button>
         </div>
 
         <div className="border-t border-gray-200 py-4">
           <button className="w-full px-6 py-3 text-left font-bold text-lg flex items-center gap-3 text-gray-700 hover:bg-gray-100">
-            <HelpCircle size={20} />
-            HELP
+            <HelpCircle size={20} />HELP
           </button>
           <button className="w-full px-6 py-3 text-left font-bold text-lg flex items-center gap-3 text-gray-700 hover:bg-gray-100">
-            <User size={20} />
-            PROFILE
+            <User size={20} />PROFILE
           </button>
         </div>
       </div>
@@ -283,11 +223,9 @@ useEffect(() => {
         {/* Header */}
         <div className="mb-12 flex items-center justify-between">
           <div>
-            <h2 className="text-4xl font-black text-gray-800 mb-2">
-              WELCOME BACK!
-            </h2>
+            <h2 className="text-4xl font-black text-gray-800 mb-2">WELCOME BACK!</h2>
             <p className="text-2xl font-bold text-lime-600">
-              {(session?.user?.name || params.username)?.toUpperCase() || 'USER'}
+              {session?.user?.name?.toUpperCase() || 'USER'}
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -298,8 +236,7 @@ useEffect(() => {
               onClick={() => signOut({ callbackUrl: '/' })}
               className="flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-lime-500 to-lime-600 text-white font-black text-xl rounded-full hover:from-lime-600 hover:to-lime-700 transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 transform"
             >
-              <LogOut size={20} />
-              LOG OUT
+              <LogOut size={20} />LOG OUT
             </button>
           </div>
         </div>
@@ -311,37 +248,23 @@ useEffect(() => {
             <Link href="/monitor">
               <button
                 className="w-full p-8 bg-lime-400 hover:bg-lime-500 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-                  transition: 'all 0.6s ease 0ms'
-                }}
+                style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.6s ease 0ms' }}
               >
                 <h3 className="text-3xl font-black text-gray-800">MONITOR YOUR MOOD</h3>
               </button>
             </Link>
-
             <Link href="/quiz">
               <button
                 className="w-full p-8 bg-lime-300 hover:bg-lime-400 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-                  transition: 'all 0.6s ease 100ms'
-                }}
+                style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.6s ease 100ms' }}
               >
                 <h3 className="text-3xl font-black text-gray-800">QUICK QUIZ</h3>
               </button>
             </Link>
-
             <Link href="/tips">
               <button
                 className="w-full p-8 bg-lime-200 hover:bg-lime-300 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transform: mounted ? 'translateY(0)' : 'translateY(20px)',
-                  transition: 'all 0.6s ease 200ms'
-                }}
+                style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.6s ease 200ms' }}
               >
                 <h3 className="text-3xl font-black text-gray-800">TODAY'S TIP</h3>
               </button>
@@ -351,7 +274,7 @@ useEffect(() => {
           {/* Right Column - Chart */}
           <div className="bg-white rounded-3xl shadow-2xl p-8">
             <h3 className="text-2xl font-black text-gray-800 mb-6">
-              Your Mood Journey: Last {userSessions.length || 10} Sessions
+              Your Mood Journey: Last {Math.min(userSessions.length, 10) || 0} Sessions
             </h3>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
@@ -387,7 +310,7 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Data Collection Info */}
+        {/* Empty state */}
         {userSessions.length === 0 && (
           <div className="mt-8 bg-blue-50 border-2 border-blue-200 rounded-2xl p-6">
             <p className="text-lg font-bold text-blue-800">

@@ -6,62 +6,64 @@ import { verifyCredentials } from '@/lib/auth';
 
 const handler = NextAuth({
   providers: [
-    // Google OAuth
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
-    
-    // Facebook OAuth (optional)
     FacebookProvider({
       clientId: process.env.FACEBOOK_CLIENT_ID,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
     }),
-    
-    // Email/Password
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" }
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          return null;
-        }
-        
-        const user = await verifyCredentials(
-          credentials.email,
-          credentials.password
-        );
-        
+        if (!credentials?.email || !credentials?.password) return null;
+        // verifyCredentials must return { id, name, email } or null
+        const user = await verifyCredentials(credentials.email, credentials.password);
         return user;
-      }
-    })
+      },
+    }),
   ],
-  
+
   pages: {
     signIn: '/auth/login',
     error: '/auth/login',
   },
-  
+
   callbacks: {
-    async jwt({ token, user }) {
+    // Persist id + name into the JWT token on first sign-in
+    async jwt({ token, user, account, profile }) {
       if (user) {
+        // Credentials login → user.id set by verifyCredentials
         token.id = user.id;
         token.name = user.name;
       }
+      if (account?.provider === 'google' && profile) {
+        // For OAuth, use the sub (Google UID) as the stable user_id
+        token.id = profile.sub;
+        token.name = profile.name;
+      }
+      if (account?.provider === 'facebook' && profile) {
+        token.id = profile.id;
+        token.name = profile.name;
+      }
       return token;
     },
+
+    // Expose id on the client-side session object
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.id;
+        session.user.id = token.id;       // ← this is what dashboard reads
         session.user.name = token.name;
       }
       return session;
-    }
+    },
   },
-  
+
   secret: process.env.NEXTAUTH_SECRET,
 });
 

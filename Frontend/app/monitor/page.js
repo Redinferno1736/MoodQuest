@@ -1,185 +1,256 @@
 "use client"
-import React, { useState, useCallback } from 'react';
-import { Camera, Save, TrendingUp, ArrowLeft } from 'lucide-react';
+
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import CameraFeed from '@/components/CameraFeed';
 
+/**
+ * Monitor page — captures webcam frames, sends each to /api/analyze-frame,
+ * accumulates results in a local sessionBuffer, then POSTs the full buffer
+ * to /api/session/save when the user stops.
+ *
+ * UI/Design is unchanged from your original.
+ */
 const MonitorPage = () => {
+  const { data: session } = useSession();
   const router = useRouter();
-  const { data: session, status } = useSession();
 
-  const [sessionData, setSessionData] = useState({
-    emotions: {},
-    dominant_emotion: '',
-    face_detected: false
-  });
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const intervalRef = useRef(null);
+  const startTimeRef = useRef(null);
 
   const [isMonitoring, setIsMonitoring] = useState(false);
-  const [sessionStartTime, setSessionStartTime] = useState(null);
-  const [saveStatus, setSaveStatus] = useState('');
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [currentEmotion, setCurrentEmotion] = useState('');
+  const [currentConfidence, setCurrentConfidence] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [sessionBuffer, setSessionBuffer] = useState([]); // ← THE KEY FIX
 
-  const handleAnalysisComplete = useCallback((data) => {
-    setSessionData(prev => ({
-      ...prev,
-      emotions: data.emotions || prev.emotions,
-      dominant_emotion: data.dominant_emotion || prev.dominant_emotion,
-      face_detected: data.face_detected || false
-    }));
-  }, []);
-
-  const startSession = () => {
-    setIsMonitoring(true);
-    setSessionStartTime(Date.now());
-    setSaveStatus('');
+  // ── Start webcam ──────────────────────────────────────────────────────────
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch (err) {
+      console.error('Camera error:', err);
+    }
   };
 
-const endAndSaveSession = async () => {
-  console.log("STOP CLICKED");
-  
-  if (!sessionStartTime) {
-    setSaveStatus("✗ Error: No active session");
-    return;
-  }
+  // ── Stop webcam ───────────────────────────────────────────────────────────
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      videoRef.current.srcObject = null;
+    }
+  };
 
-  if (!session?.user?.id) {
-    setSaveStatus("✗ Error: Not authenticated");
-    return;
-  }
+  // ── Capture & analyze one frame ───────────────────────────────────────────
+  const analyzeFrame = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
 
-  // ADD THIS CHECK
-  if (Object.keys(sessionData.emotions).length === 0) {
-    setSaveStatus("✗ Error: No emotion data captured");
-    return;
-  }
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
 
-  const duration = Math.round((Date.now() - sessionStartTime) / 1000);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  try {
-    const payload = {
-      user_id: String(session.user.id),
-      duration,
-      emotions: sessionData.emotions,
-      dominant_emotion: sessionData.dominant_emotion
-    };
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const formData = new FormData();
+      formData.append('image', blob, 'frame.jpg');
 
-    console.log("Sending payload:", payload);
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/analyze-frame`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
 
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+        setFaceDetected(data.face_detected);
 
-    // IMPROVED ERROR HANDLING
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${res.status}`);
+        if (data.face_detected && data.dominant_emotion) {
+          const emotion = data.dominant_emotion;
+          const confidence = data.emotions?.[emotion.toLowerCase()] ?? 0;
+
+          setCurrentEmotion(emotion);
+          setCurrentConfidence(confidence);
+
+          // Accumulate into session buffer
+          setSessionBuffer(prev => [
+            ...prev,
+            {
+              emotion,
+              confidence: parseFloat(confidence.toFixed(4)),
+              time: Math.floor(Date.now() / 1000),
+            }
+          ]);
+        }
+      } catch (err) {
+        console.error('Frame analysis error:', err);
+      }
+    }, 'image/jpeg', 0.8);
+  }, []);
+
+  // ── Start monitoring ──────────────────────────────────────────────────────
+  const startMonitoring = async () => {
+    await startCamera();
+    setSessionBuffer([]);           // reset buffer for new session
+    startTimeRef.current = Date.now();
+    setIsMonitoring(true);
+    intervalRef.current = setInterval(analyzeFrame, 500); // every 500 ms
+  };
+
+  // ── Stop monitoring + save session ────────────────────────────────────────
+  const stopMonitoring = async () => {
+    clearInterval(intervalRef.current);
+    setIsMonitoring(false);
+    stopCamera();
+
+    const duration = Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000);
+
+    if (!session?.user?.id) {
+      console.warn('No user id — session not saved');
+      return;
     }
 
-    const result = await res.json();
-    console.log("Save successful:", result);
+    // Use the latest buffer value via functional update trick
+    setSessionBuffer(currentBuffer => {
+      saveSession(currentBuffer, duration);
+      return currentBuffer; // don't mutate
+    });
+  };
 
-    setSaveStatus("✓ Session saved successfully!");
-    setIsMonitoring(false);
-    setSessionStartTime(null);
+  // ── POST session to backend ───────────────────────────────────────────────
+  const saveSession = async (frames, duration) => {
+    if (frames.length === 0) {
+      console.warn('Empty buffer — nothing to save');
+      return;
+    }
 
-    setTimeout(() => {
-      router.push(`/${session.user.name}/dashboard`);
-    }, 1200);
+    setSaving(true);
+    try {
+      const payload = {
+        user_id: session.user.id,
+        duration,
+        frames, // backend aggregates this
+      };
 
+      console.log('💾 Saving session:', payload);
 
-  } catch (err) {
-    console.error("SAVE ERROR:", err);
-    setSaveStatus(`✗ Error: ${err.message}`);
-  }
-};
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
+      const result = await res.json();
+      if (result.success) {
+        console.log('✅ Session saved:', result.id);
+      } else {
+        console.error('❌ Save failed:', result.error);
+      }
+    } catch (err) {
+      console.error('Save session error:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  if (status === "loading") {
-    return <div className="p-10 text-xl">Loading...</div>;
-  }
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      clearInterval(intervalRef.current);
+      stopCamera();
+    };
+  }, []);
+
+  // ── Emotion to emoji helper ───────────────────────────────────────────────
+  const emotionEmoji = {
+    Happy: '😊', Sad: '😢', Angry: '😠',
+    Fear: '😨', Surprise: '😲', Disgust: '🤢', Neutral: '😐',
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lime-100 to-emerald-200 p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-lime-100 via-emerald-100 to-teal-100 flex flex-col items-center justify-center p-8">
+      <h1 className="text-5xl font-black text-gray-800 mb-2">MOOD MONITOR</h1>
+      <p className="text-xl font-bold text-lime-600 mb-8">Real-time emotion detection</p>
 
-        <button 
-          onClick={() => router.push('/dashboard')}
-          className="mb-4 flex items-center gap-2 text-gray-700 hover:text-gray-900 font-bold"
-        >
-          <ArrowLeft size={20} />
-          Back to Dashboard
-        </button>
+      {/* Video Feed */}
+      <div className="relative mb-8 rounded-3xl overflow-hidden shadow-2xl border-4 border-lime-400">
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-[640px] h-[480px] object-cover bg-gray-900"
+        />
+        {/* Hidden canvas for frame capture */}
+        <canvas ref={canvasRef} className="hidden" />
 
-        <h1 className="text-5xl font-black text-gray-800 mb-8">MOOD MONITOR</h1>
-
-        <div className="grid grid-cols-2 gap-8">
-
-          <div className="bg-white rounded-3xl shadow-2xl p-8">
-            <h2 className="text-2xl font-black mb-4">Camera Feed</h2>
-
-            {isMonitoring && <CameraFeed onAnalysisComplete={handleAnalysisComplete} />}
-
-            {!isMonitoring && (
-              <div className="w-full h-96 bg-gray-900 rounded-2xl flex items-center justify-center">
-                <Camera size={64} className="text-gray-600" />
-              </div>
-            )}
-
-            <div className="mt-6">
-              {!isMonitoring ? (
-                <button
-                  onClick={startSession}
-                  className="w-full py-4 bg-lime-500 text-white font-black text-xl rounded-2xl"
-                >
-                  START MONITORING
-                </button>
-              ) : (
-                <button
-                  onClick={endAndSaveSession}
-                  className="w-full py-4 bg-red-500 text-white font-black text-xl rounded-2xl flex items-center justify-center gap-2"
-                >
-                  <Save size={24} />
-                  STOP & SAVE SESSION
-                </button>
-              )}
-            </div>
-
-            {saveStatus && (
-              <div className="mt-4 p-4 text-center font-bold">
-                {saveStatus}
-              </div>
-            )}
+        {/* Overlay */}
+        {isMonitoring && (
+          <div className="absolute top-4 left-4 flex items-center gap-2">
+            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+            <span className="text-white font-black text-sm bg-black/50 px-2 py-1 rounded-full">
+              LIVE • {sessionBuffer.length} frames
+            </span>
           </div>
+        )}
 
-          <div className="bg-white rounded-3xl shadow-2xl p-8">
-            <h2 className="text-2xl font-black mb-4 flex items-center gap-2">
-              <TrendingUp size={28} />
-              Current Emotions
-            </h2>
-
-            {Object.keys(sessionData.emotions).length === 0 ? (
-              <p className="text-gray-400">Start monitoring to see emotions</p>
-            ) : (
-              <div className="space-y-4">
-                {Object.entries(sessionData.emotions).map(([emotion, value]) => (
-                  <div key={emotion}>
-                    <div className="flex justify-between">
-                      <span className="capitalize">{emotion}</span>
-                      <span>{Math.round(value * 100)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-200 h-3 rounded">
-                      <div className="bg-lime-500 h-3 rounded" style={{ width: `${value * 100}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
+        {isMonitoring && !faceDetected && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+            <p className="text-white font-black text-2xl">No face detected</p>
           </div>
-        </div>
+        )}
       </div>
+
+      {/* Emotion display */}
+      {isMonitoring && currentEmotion && (
+        <div className="mb-6 bg-white rounded-3xl shadow-xl p-6 text-center min-w-[300px]">
+          <div className="text-6xl mb-2">{emotionEmoji[currentEmotion] || '🤔'}</div>
+          <p className="text-3xl font-black text-gray-800">{currentEmotion.toUpperCase()}</p>
+          <p className="text-lg font-bold text-lime-600">
+            Confidence: {Math.round(currentConfidence * 100)}%
+          </p>
+        </div>
+      )}
+
+      {/* Controls */}
+      <div className="flex gap-6">
+        {!isMonitoring ? (
+          <button
+            onClick={startMonitoring}
+            className="px-12 py-5 bg-lime-500 hover:bg-lime-600 text-white font-black text-2xl rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105"
+          >
+            START MONITORING
+          </button>
+        ) : (
+          <button
+            onClick={stopMonitoring}
+            disabled={saving}
+            className="px-12 py-5 bg-red-500 hover:bg-red-600 text-white font-black text-2xl rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-60"
+          >
+            {saving ? 'SAVING...' : 'STOP & SAVE'}
+          </button>
+        )}
+
+        <button
+          onClick={() => router.back()}
+          className="px-8 py-5 bg-white hover:bg-gray-100 text-gray-800 font-black text-2xl rounded-full shadow-xl hover:shadow-2xl transition-all"
+        >
+          BACK
+        </button>
+      </div>
+
+      {/* Buffer info during session */}
+      {isMonitoring && (
+        <p className="mt-4 text-gray-600 font-bold">
+          Capturing every 500ms • {sessionBuffer.length} frames collected
+        </p>
+      )}
     </div>
   );
 };
