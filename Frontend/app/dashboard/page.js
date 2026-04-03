@@ -277,12 +277,12 @@ const Dashboard = () => {
         {/* Empty state */}
         {userSessions.length === 0 && (
           <div className="mt-8 bg-blue-50 border-2 border-blue-200 rounded-2xl p-6">
-            <p className="text-lg font-bold text-blue-800">
-              👋 Start tracking your mood to see your personalized data here!
-            </p>
-            <p className="text-blue-600 mt-2">
-              Use the "Monitor Your Mood" feature to begin collecting your emotional journey data.
-            </p>
+<p className="text-lg font-bold text-blue-800">
+  👋 Start tracking your mood to see your personalized data here!
+</p>
+<p className="text-blue-600 mt-2">
+  Use the &quot;Monitor Your Mood&quot; feature to begin collecting your emotional journey data.
+</p>
           </div>
         )}
       </div>
