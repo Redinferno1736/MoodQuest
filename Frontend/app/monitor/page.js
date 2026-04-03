@@ -6,10 +6,9 @@ import { useSession } from 'next-auth/react';
 
 /**
  * Monitor page — captures webcam frames, sends each to /api/analyze-frame,
- * accumulates results in a local sessionBuffer, then POSTs the full buffer
- * to /api/session/save when the user stops.
- *
- * UI/Design is unchanged from your original.
+ * accumulates results in a ref-backed buffer (avoids stale-closure bugs in
+ * production/strict mode), then POSTs the full buffer to /api/session/save
+ * when the user stops.
  */
 const MonitorPage = () => {
   const { data: session } = useSession();
@@ -19,31 +18,34 @@ const MonitorPage = () => {
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
   const startTimeRef = useRef(null);
+  // KEY FIX: keep the live buffer in a ref so analyzeFrame always appends to
+  // the latest array without any stale-closure or functional-update tricks.
+  const sessionBufferRef = useRef([]);
 
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState('');
   const [currentConfidence, setCurrentConfidence] = useState(0);
+  const [frameCount, setFrameCount] = useState(0); // display only
   const [saving, setSaving] = useState(false);
-  const [sessionBuffer, setSessionBuffer] = useState([]); // ← THE KEY FIX
 
   // ── Start webcam ──────────────────────────────────────────────────────────
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch (err) {
       console.error('Camera error:', err);
     }
-  };
+  }, []);
 
   // ── Stop webcam ───────────────────────────────────────────────────────────
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
       videoRef.current.srcObject.getTracks().forEach(t => t.stop());
       videoRef.current.srcObject = null;
     }
-  };
+  }, []);
 
   // ── Capture & analyze one frame ───────────────────────────────────────────
   const analyzeFrame = useCallback(async () => {
@@ -78,55 +80,42 @@ const MonitorPage = () => {
           setCurrentEmotion(emotion);
           setCurrentConfidence(confidence);
 
-          // Accumulate into session buffer
-          setSessionBuffer(prev => [
-            ...prev,
-            {
-              emotion,
-              confidence: parseFloat(confidence.toFixed(4)),
-              time: Math.floor(Date.now() / 1000),
-            }
-          ]);
+          // Append to ref-backed buffer — no stale closure, no React batching issues
+          sessionBufferRef.current.push({
+            emotion,
+            confidence: parseFloat(confidence.toFixed(4)),
+            time: Math.floor(Date.now() / 1000),
+          });
+          setFrameCount(sessionBufferRef.current.length);
         }
       } catch (err) {
         console.error('Frame analysis error:', err);
       }
     }, 'image/jpeg', 0.8);
-  }, []);
+  }, []); // no deps needed — only refs and setters (both stable)
 
   // ── Start monitoring ──────────────────────────────────────────────────────
-  const startMonitoring = async () => {
+  const startMonitoring = useCallback(async () => {
+    sessionBufferRef.current = []; // reset buffer for new session
+    setFrameCount(0);
+    setCurrentEmotion('');
+    setCurrentConfidence(0);
+    setFaceDetected(false);
+
     await startCamera();
-    setSessionBuffer([]);           // reset buffer for new session
     startTimeRef.current = Date.now();
     setIsMonitoring(true);
-    intervalRef.current = setInterval(analyzeFrame, 500); // every 500 ms
-  };
-
-  // ── Stop monitoring + save session ────────────────────────────────────────
-  const stopMonitoring = async () => {
-    clearInterval(intervalRef.current);
-    setIsMonitoring(false);
-    stopCamera();
-
-    const duration = Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000);
-
-    if (!session?.user?.id) {
-      console.warn('No user id — session not saved');
-      return;
-    }
-
-    // Use the latest buffer value via functional update trick
-    setSessionBuffer(currentBuffer => {
-      saveSession(currentBuffer, duration);
-      return currentBuffer; // don't mutate
-    });
-  };
+    intervalRef.current = setInterval(analyzeFrame, 500);
+  }, [startCamera, analyzeFrame]);
 
   // ── POST session to backend ───────────────────────────────────────────────
-  const saveSession = async (frames, duration) => {
+  const saveSession = useCallback(async (frames, duration) => {
     if (frames.length === 0) {
       console.warn('Empty buffer — nothing to save');
+      return;
+    }
+    if (!session?.user?.id) {
+      console.warn('No user id — session not saved');
       return;
     }
 
@@ -135,7 +124,7 @@ const MonitorPage = () => {
       const payload = {
         user_id: session.user.id,
         duration,
-        frames, // backend aggregates this
+        frames,
       };
 
       console.log('💾 Saving session:', payload);
@@ -145,6 +134,11 @@ const MonitorPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+
+      if (!res.ok) {
+        console.error('❌ Save HTTP error:', res.status);
+        return;
+      }
 
       const result = await res.json();
       if (result.success) {
@@ -157,15 +151,28 @@ const MonitorPage = () => {
     } finally {
       setSaving(false);
     }
-  };
+  }, [session?.user?.id]);
 
-  // Cleanup on unmount
+  // ── Stop monitoring + save session ────────────────────────────────────────
+  const stopMonitoring = useCallback(async () => {
+    clearInterval(intervalRef.current);
+    intervalRef.current = null;
+    setIsMonitoring(false);
+    stopCamera();
+
+    const duration = Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000);
+    // Read directly from the ref — always current, no stale closure
+    const frames = [...sessionBufferRef.current];
+    await saveSession(frames, duration);
+  }, [stopCamera, saveSession]);
+
+  // ── Cleanup on unmount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      clearInterval(intervalRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
       stopCamera();
     };
-  }, []);
+  }, [stopCamera]);
 
   // ── Emotion to emoji helper ───────────────────────────────────────────────
   const emotionEmoji = {
@@ -195,7 +202,7 @@ const MonitorPage = () => {
           <div className="absolute top-4 left-4 flex items-center gap-2">
             <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
             <span className="text-white font-black text-sm bg-black/50 px-2 py-1 rounded-full">
-              LIVE • {sessionBuffer.length} frames
+              LIVE • {frameCount} frames
             </span>
           </div>
         )}
@@ -223,7 +230,8 @@ const MonitorPage = () => {
         {!isMonitoring ? (
           <button
             onClick={startMonitoring}
-            className="px-12 py-5 bg-lime-500 hover:bg-lime-600 text-white font-black text-2xl rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105"
+            disabled={saving}
+            className="px-12 py-5 bg-lime-500 hover:bg-lime-600 text-white font-black text-2xl rounded-full shadow-xl hover:shadow-2xl transition-all transform hover:scale-105 disabled:opacity-60"
           >
             START MONITORING
           </button>
@@ -248,7 +256,7 @@ const MonitorPage = () => {
       {/* Buffer info during session */}
       {isMonitoring && (
         <p className="mt-4 text-gray-600 font-bold">
-          Capturing every 500ms • {sessionBuffer.length} frames collected
+          Capturing every 500ms • {frameCount} frames collected
         </p>
       )}
     </div>

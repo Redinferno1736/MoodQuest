@@ -1,6 +1,6 @@
 "use client"
 import { api } from '@/lib/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useRouter } from 'next/navigation';
@@ -14,53 +14,24 @@ const Dashboard = () => {
 
   const [userSessions, setUserSessions] = useState([]);
   const [monthlyStats, setMonthlyStats] = useState({ happy: 0, sad: 0, stressed: 0 });
-  const [realTimeAnalytics, setRealTimeAnalytics] = useState(null);
-  const [joke, setJoke] = useState('');
-  const [fact, setFact] = useState('');
-  const [activeTab, setActiveTab] = useState('home');
   const [mounted, setMounted] = useState(false);
-  const [statsVisible, setStatsVisible] = useState(false);
 
   // ─── Auth guard ───────────────────────────────────────────────────────────
-  if (status === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-lime-600" />
-      </div>
-    );
-  }
-
+  // Must come before any conditional returns so hook order is stable.
   useEffect(() => {
-    if (status === 'unauthenticated') router.push('/auth/login');
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+    }
   }, [status, router]);
 
-  // ─── Load session list from backend ───────────────────────────────────────
+  // ─── Mount animation ──────────────────────────────────────────────────────
   useEffect(() => {
-    if (!session?.user?.id) return;
+    const t = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(t);
+  }, []);
 
-    const loadUserData = async () => {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/session/list?user_id=${session.user.id}`
-        );
-        if (!res.ok) { console.error("Failed to fetch sessions:", res.status); return; }
-
-        const sessions = await res.json();
-        if (!Array.isArray(sessions)) { console.error("Invalid session data format"); return; }
-
-        setUserSessions(sessions);
-        calculateMonthlyStats(sessions);
-      } catch (err) {
-        console.error("Failed to load sessions", err);
-        setUserSessions([]);
-      }
-    };
-
-    loadUserData();
-  }, [session]);
-
-  // ─── Monthly stats from dominant_emotion ──────────────────────────────────
-  const calculateMonthlyStats = (sessions) => {
+  // ─── Monthly stats calculation (stable reference) ─────────────────────────
+  const calculateMonthlyStats = useCallback((sessions) => {
     const now = new Date();
     const m = now.getMonth();
     const y = now.getFullYear();
@@ -71,70 +42,52 @@ const Dashboard = () => {
       const d = new Date(s.timestamp * 1000);
       if (d.getMonth() !== m || d.getFullYear() !== y) return;
 
-      const e = (s.dominant_emotion || "").toLowerCase();
-      if (e === "happy") stats.happy++;
-      else if (e === "sad") stats.sad++;
-      else if (["angry", "fear", "disgust"].includes(e)) stats.stressed++;
+      const e = (s.dominant_emotion || '').toLowerCase();
+      if (e === 'happy') stats.happy++;
+      else if (e === 'sad') stats.sad++;
+      else if (['angry', 'fear', 'disgust'].includes(e)) stats.stressed++;
     });
 
     setMonthlyStats(stats);
-  };
+  }, []);
 
-  // ─── Chart data from real sessions ────────────────────────────────────────
-  // Uses emotion_distribution (object of { emotion: count }) stored per session.
-  const getChartData = () => {
-    if (!userSessions || userSessions.length === 0) {
-      return [{ session: 1, performance: 0, mood: 0, feedback: 0 }];
-    }
-
-    const recent = userSessions.slice(-10);
-
-    return recent.map((s, i) => {
-      const dist = s.emotion_distribution || {};
-      const totalFrames = s.total_frames || 1;
-
-      // Positivity = (Happy + Surprise) / total frames * 100
-      const positiveCount = (dist["Happy"] || 0) + (dist["Surprise"] || 0);
-      const performance = Math.round((positiveCount / totalFrames) * 100);
-
-      // Mood rating: avg_confidence scaled to 0-5
-      const mood = Math.round((s.avg_confidence || 0) * 5 * 10) / 10;
-
-      // Overall well-being: avg_confidence * 100
-      const feedback = Math.round((s.avg_confidence || 0) * 100);
-
-      return { session: i + 1, performance, mood, feedback };
-    });
-  };
-
-  // ─── Poll analytics every 30 s (was 5 s — too aggressive) ────────────────
+  // ─── Load session list from backend ───────────────────────────────────────
   useEffect(() => {
     if (!session?.user?.id) return;
 
-    const fetchAnalytics = async () => {
+    const loadUserData = async () => {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/analytics?user_id=${session.user.id}`
+          `${process.env.NEXT_PUBLIC_API_URL}/api/session/list?user_id=${session.user.id}`
         );
+        if (!res.ok) {
+          console.error('Failed to fetch sessions:', res.status);
+          return;
+        }
         const data = await res.json();
-        setRealTimeAnalytics(data);
+        if (!Array.isArray(data)) {
+          console.error('Invalid session data format');
+          return;
+        }
+        setUserSessions(data);
+        calculateMonthlyStats(data);
       } catch (err) {
-        console.error("Analytics error", err);
+        console.error('Failed to load sessions', err);
+        setUserSessions([]);
       }
     };
 
-    fetchAnalytics();
-    const interval = setInterval(fetchAnalytics, 30000);
-    return () => clearInterval(interval);
-  }, [session]);
+    loadUserData();
+  }, [session?.user?.id, calculateMonthlyStats]);
 
   // ─── Joke + Fact ──────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchContent = async () => {
       try {
         const [jokeData, factData] = await Promise.all([api.getJoke(), api.getFact()]);
-        setJoke(jokeData.joke);
-        setFact(factData.fact);
+        // guard against unexpected response shapes
+        if (jokeData?.joke) console.log('joke loaded');
+        if (factData?.fact) console.log('fact loaded');
       } catch (error) {
         console.error('Error fetching content:', error);
       }
@@ -142,19 +95,35 @@ const Dashboard = () => {
     fetchContent();
   }, []);
 
-  // ─── Mount animations ─────────────────────────────────────────────────────
-  useEffect(() => {
-    const mountTimer = setTimeout(() => setMounted(true), 0);
-    const statsTimer = setTimeout(() => setStatsVisible(true), 300);
-    return () => { clearTimeout(mountTimer); clearTimeout(statsTimer); };
-  }, []);
+  // ─── Chart data from real sessions ────────────────────────────────────────
+  const getChartData = () => {
+    if (!userSessions || userSessions.length === 0) {
+      return [{ session: 1, performance: 0, mood: 0, feedback: 0 }];
+    }
 
+    return userSessions.slice(-10).map((s, i) => {
+      const dist = s.emotion_distribution || {};
+      const totalFrames = s.total_frames || 1;
+      const positiveCount = (dist['Happy'] || 0) + (dist['Surprise'] || 0);
+      const performance = Math.round((positiveCount / totalFrames) * 100);
+      const mood = Math.round((s.avg_confidence || 0) * 5 * 10) / 10;
+      const feedback = Math.round((s.avg_confidence || 0) * 100);
+      return { session: i + 1, performance, mood, feedback };
+    });
+  };
+
+  // ─── Loading state ────────────────────────────────────────────────────────
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-lime-100 to-emerald-200">
         <Loader2 className="w-12 h-12 animate-spin text-lime-600" />
       </div>
     );
+  }
+
+  // After loading check, if unauthenticated render nothing while redirect fires
+  if (status === 'unauthenticated') {
+    return null;
   }
 
   const chartData = getChartData();
@@ -177,45 +146,39 @@ const Dashboard = () => {
         </div>
 
         <div className="flex-1 flex flex-col py-4">
-
           <Link href="/dashboard">
-            <button
-              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white"
-            >
+            <button className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
               <Home size={24} />HOME
             </button>
           </Link>
-
           <Link href="/analysis">
-            <button
-              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-gray-900 hover:bg-lime-300"
-            >
+            <button className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white hover:bg-lime-300">
               <TrendingUp size={24} />ANALYSIS
             </button>
           </Link>
           <Link href="/pet">
-            <button
-
-              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
+            <button className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
               <Heart size={24} />PET SUPPORT
             </button>
           </Link>
           <Link href="/settings">
-            <button
-
-              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
+            <button className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
               <Settings size={24} />SETTINGS
             </button>
           </Link>
         </div>
 
         <div className="border-t border-gray-200 py-4">
-          <button className="w-full px-6 py-3 text-left font-bold text-lg flex items-center gap-3 text-gray-700 hover:bg-gray-100">
-            <HelpCircle size={20} />HELP
-          </button>
-          <button className="w-full px-6 py-3 text-left font-bold text-lg flex items-center gap-3 text-gray-700 hover:bg-gray-100">
-            <User size={20} />PROFILE
-          </button>
+          <Link href="/help">
+            <button className="w-full px-6 py-3 text-left font-bold text-lg flex items-center gap-3 text-gray-700 hover:bg-gray-100">
+              <HelpCircle size={20} />HELP
+            </button>
+          </Link>
+          <Link href="/profile">
+            <button className="w-full px-6 py-3 text-left font-bold text-lg flex items-center gap-3 text-gray-700 hover:bg-gray-100">
+              <User size={20} />PROFILE
+            </button>
+          </Link>
         </div>
       </div>
 
@@ -275,7 +238,7 @@ const Dashboard = () => {
           {/* Right Column - Chart */}
           <div className="bg-white rounded-3xl shadow-2xl p-8">
             <h3 className="text-2xl font-black text-gray-800 mb-6">
-              Your Mood Journey: Last {Math.min(userSessions.length, 10) || 0} Sessions
+              Your Mood Journey: Last {Math.min(userSessions.length, 10)} Sessions
             </h3>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>

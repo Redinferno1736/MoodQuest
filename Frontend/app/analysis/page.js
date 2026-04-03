@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from 'react';
-import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User, Smile, Target, Award, Calendar } from 'lucide-react';
+import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User, Smile, Target, Award } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area,
@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-// Colours for pie chart slices
 const EMOTION_COLORS = {
   Happy: '#a3e635',
   Sad: '#f87171',
@@ -24,19 +24,29 @@ const EMOTION_COLORS = {
 };
 
 const AnalysisPage = () => {
-
   const { data: session, status } = useSession();
+  const router = useRouter();
 
   const [timeRange, setTimeRange] = useState('month');
-
-  // ── Real data state ──────────────────────────────────────────────────────
   const [analyticsData, setAnalyticsData] = useState(null);
   const [userSessions, setUserSessions] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ── Fetch analytics + session list ──────────────────────────────────────
+  // ── Auth guard ─────────────────────────────────────────────────────────────
+  // Must be before any conditional returns to keep hook order stable.
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+    }
+  }, [status, router]);
+
+  // ── Fetch analytics + session list ────────────────────────────────────────
+  // timeRange is kept in deps so switching tabs triggers a refetch,
+  // but the API URLs don't use it yet — easy to add later.
   useEffect(() => {
     if (!session?.user?.id) return;
+
+    let cancelled = false; // prevent state update on unmounted component
 
     const fetchAll = async () => {
       setLoading(true);
@@ -46,24 +56,33 @@ const AnalysisPage = () => {
           fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/list?user_id=${session.user.id}`),
         ]);
 
-        const analytics = await analyticsRes.json();
-        const sessions = await sessionsRes.json();
+        if (!analyticsRes.ok || !sessionsRes.ok) {
+          console.error('Fetch failed', analyticsRes.status, sessionsRes.status);
+          return;
+        }
+
+        const [analytics, sessions] = await Promise.all([
+          analyticsRes.json(),
+          sessionsRes.json(),
+        ]);
+
+        if (cancelled) return;
 
         setAnalyticsData(analytics);
         setUserSessions(Array.isArray(sessions) ? sessions : []);
       } catch (err) {
-        console.error("Failed to load analysis data", err);
+        console.error('Failed to load analysis data', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchAll();
-  }, [session, timeRange]);
+    return () => { cancelled = true; };
+  }, [session?.user?.id, timeRange]);
 
-  // ── Derived chart data ───────────────────────────────────────────────────
+  // ── Derived chart helpers ─────────────────────────────────────────────────
 
-  // Mood Distribution pie
   const getMoodDistribution = () => {
     if (!analyticsData?.emotion_distribution) return [];
     return Object.entries(analyticsData.emotion_distribution).map(([name, value]) => ({
@@ -73,13 +92,11 @@ const AnalysisPage = () => {
     }));
   };
 
-  // Weekly trend bar chart (from /api/analytics trend array)
   const getTrendData = () => {
     if (!analyticsData?.trend || analyticsData.trend.length === 0) return [];
     return analyticsData.trend;
   };
 
-  // Daily mood area chart from session list (avg_confidence * 5 per session, grouped by day)
   const getDailyMoodData = () => {
     const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const map = {};
@@ -96,7 +113,6 @@ const AnalysisPage = () => {
     }));
   };
 
-  // Performance vs mood from last 10 sessions
   const getPerformanceData = () => {
     if (!userSessions.length) return [];
     return userSessions.slice(-10).map((s, i) => {
@@ -111,7 +127,7 @@ const AnalysisPage = () => {
     });
   };
 
-  // Quick stats
+  // ── Quick stats ────────────────────────────────────────────────────────────
   const totalSessions = analyticsData?.total_sessions || 0;
   const avgDuration = analyticsData?.avg_duration || 0;
   const avgConfidence = analyticsData?.avg_confidence || 0;
@@ -122,6 +138,7 @@ const AnalysisPage = () => {
     : 0;
   const avgMoodScore = Math.round(avgConfidence * 5 * 10) / 10;
 
+  // ── Loading / unauthenticated gates ───────────────────────────────────────
   if (status === 'loading' || loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-100">
@@ -130,12 +147,14 @@ const AnalysisPage = () => {
     );
   }
 
+  if (status === 'unauthenticated') {
+    return null;
+  }
+
   const moodDistributionData = getMoodDistribution();
   const trendData = getTrendData();
   const dailyMoodData = getDailyMoodData();
   const performanceData = getPerformanceData();
-
-  // Fallback static data if no sessions yet (keeps charts from being empty/broken)
   const hasData = userSessions.length > 0;
 
   return (
@@ -150,39 +169,18 @@ const AnalysisPage = () => {
         </div>
 
         <nav className="flex-1 py-4">
-
-          {/* HOME */}
-          <Link
-            href="/dashboard"
-            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors"
-          >
+          <Link href="/dashboard" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
             <Home size={24} />HOME
           </Link>
-
-          {/* ANALYSIS (CURRENT PAGE → highlighted) */}
-          <Link
-            href="/analysis"
-            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white transition-colors"
-          >
+          <Link href="/analysis" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white transition-colors">
             <TrendingUp size={24} />ANALYSIS
           </Link>
-
-          {/* PET */}
-          <Link
-            href="/pet"
-            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors"
-          >
+          <Link href="/pet" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
             <Heart size={24} />PET SUPPORT
           </Link>
-
-          {/* SETTINGS */}
-          <Link
-            href="/settings"
-            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors"
-          >
+          <Link href="/settings" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
             <Settings size={24} />SETTINGS
           </Link>
-
         </nav>
 
         <div className="border-t-2 border-lime-400">
@@ -241,7 +239,7 @@ const AnalysisPage = () => {
               </div>
             )}
 
-            {/* Quick Stats (real data) */}
+            {/* Quick Stats */}
             <div className="grid grid-cols-4 gap-4">
               <div className="bg-gradient-to-br from-lime-400 to-lime-500 p-6 rounded-3xl shadow-lg text-white">
                 <div className="flex items-center justify-between mb-2">
@@ -275,7 +273,6 @@ const AnalysisPage = () => {
 
             {/* Main Charts Row */}
             <div className="grid grid-cols-2 gap-6">
-              {/* Mood Trend (from backend trend array) */}
               <div className="bg-white p-6 rounded-3xl shadow-lg">
                 <h3 className="text-2xl font-black text-gray-900 mb-4">MOOD TRENDS</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -293,7 +290,6 @@ const AnalysisPage = () => {
                 </ResponsiveContainer>
               </div>
 
-              {/* Mood Distribution Pie */}
               <div className="bg-white p-6 rounded-3xl shadow-lg">
                 <h3 className="text-2xl font-black text-gray-900 mb-4">MOOD DISTRIBUTION</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -333,7 +329,6 @@ const AnalysisPage = () => {
 
             {/* Bottom Row */}
             <div className="grid grid-cols-2 gap-6">
-              {/* Emotion breakdown radar */}
               <div className="bg-white p-6 rounded-3xl shadow-lg">
                 <h3 className="text-2xl font-black text-gray-900 mb-4">EMOTION BREAKDOWN</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -351,7 +346,6 @@ const AnalysisPage = () => {
                 </ResponsiveContainer>
               </div>
 
-              {/* Performance vs Mood */}
               <div className="bg-white p-6 rounded-3xl shadow-lg">
                 <h3 className="text-2xl font-black text-gray-900 mb-4">PERFORMANCE VS MOOD</h3>
                 <ResponsiveContainer width="100%" height={300}>
@@ -388,7 +382,7 @@ const AnalysisPage = () => {
               </div>
             </div>
 
-            {/* Recent Sessions (real) */}
+            {/* Recent Sessions */}
             <div className="bg-white p-6 rounded-3xl shadow-lg">
               <h3 className="text-2xl font-black text-gray-900 mb-4">RECENT SESSIONS</h3>
               <div className="space-y-3">
