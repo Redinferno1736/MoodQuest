@@ -178,34 +178,35 @@ const Dashboard = () => {
 
         <div className="flex-1 flex flex-col py-4">
 
-<Link href="/dashboard">
-  <button
-    className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white"
-  >
-    <Home size={24} />HOME
-  </button>
-</Link>
+          <Link href="/dashboard">
+            <button
+              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white"
+            >
+              <Home size={24} />HOME
+            </button>
+          </Link>
 
-<Link href="/analysis">
-  <button
-    className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300"
-  >
-    <TrendingUp size={24} />ANALYSIS
-  </button>
-</Link>
+          <Link href="/analysis">
+            <button
+              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-gray-900 hover:bg-lime-300"
+            >
+              <TrendingUp size={24} />ANALYSIS
+            </button>
+          </Link>
+          <Link href="/pet">
+            <button
 
-          <button
-            onClick={() => setActiveTab('pet')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'pet' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
-          >
-            <Heart size={24} />PET SUPPORT
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
-          >
-            <Settings size={24} />SETTINGS
-          </button>
+              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
+              <Heart size={24} />PET SUPPORT
+            </button>
+          </Link>
+          <Link href="/settings">
+            <button
+
+              className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white">
+              <Settings size={24} />SETTINGS
+            </button>
+          </Link>
         </div>
 
         <div className="border-t border-gray-200 py-4">

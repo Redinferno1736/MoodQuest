@@ -8,7 +8,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { useSession } from 'next-auth/react';
 import { Loader2 } from 'lucide-react';
 
@@ -24,10 +24,9 @@ const EMOTION_COLORS = {
 };
 
 const AnalysisPage = () => {
-  const params = useParams();
+
   const { data: session, status } = useSession();
 
-  const [activeTab, setActiveTab] = useState('analysis');
   const [timeRange, setTimeRange] = useState('month');
 
   // ── Real data state ──────────────────────────────────────────────────────
@@ -146,39 +145,44 @@ const AnalysisPage = () => {
         <div className="bg-gray-900 text-white p-6 text-center">
           <h1 className="text-2xl font-black tracking-wide">DASHBOARD</h1>
           <p className="text-sm font-bold text-lime-400 mt-2">
-            {session?.user?.name || params.username}
+            {session?.user?.name}
           </p>
         </div>
 
         <nav className="flex-1 py-4">
+
+          {/* HOME */}
           <Link
-            href={`/${params.username}/dashboard`}
-            onClick={() => setActiveTab('home')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'home' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
+            href="/dashboard"
+            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors"
           >
             <Home size={24} />HOME
           </Link>
+
+          {/* ANALYSIS (CURRENT PAGE → highlighted) */}
           <Link
             href="/analysis"
-            onClick={() => setActiveTab('analysis')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'analysis' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
+            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-600 text-white transition-colors"
           >
             <TrendingUp size={24} />ANALYSIS
           </Link>
+
+          {/* PET */}
           <Link
             href="/pet"
-            onClick={() => setActiveTab('pet')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'pet' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
+            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors"
           >
             <Heart size={24} />PET SUPPORT
           </Link>
+
+          {/* SETTINGS */}
           <Link
             href="/settings"
-            onClick={() => setActiveTab('settings')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${activeTab === 'settings' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'}`}
+            className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors"
           >
             <Settings size={24} />SETTINGS
           </Link>
+
         </nav>
 
         <div className="border-t-2 border-lime-400">
@@ -203,7 +207,10 @@ const AnalysisPage = () => {
             <button className="p-3 bg-lime-200 rounded-full hover:bg-lime-300 transition-colors">
               <Bell size={24} className="text-gray-900" />
             </button>
-            <button className="px-8 py-3 bg-lime-500 text-white font-black text-xl rounded-full hover:bg-lime-600 transition-colors">
+            <button
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="px-8 py-3 bg-lime-500 text-white font-black text-xl rounded-full hover:bg-lime-600 transition-colors"
+            >
               LOG OUT
             </button>
           </div>

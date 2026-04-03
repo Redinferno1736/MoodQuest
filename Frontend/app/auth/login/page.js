@@ -46,7 +46,7 @@ export default function LoginPage() {
         if (result?.error) {
           setError(result.error);
         } else {
-          router.push(`/${name}/dashboard`);
+          router.push('/dashboard');
         }
       } else {
         // Handle sign in
@@ -59,9 +59,7 @@ export default function LoginPage() {
         if (result?.error) {
           setError('Invalid email or password');
         } else {
-          // Extract username from email or use stored name
-          const username = email.split('@')[0];
-          router.push(`/${username}/dashboard`);
+          router.push('/dashboard');
         }
       }
     } catch (err) {
@@ -75,7 +73,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signIn('google', {
-        callbackUrl: '/Prateek/dashboard'
+        callbackUrl: '/dashboard'
       });
     } catch (err) {
       setError('Google sign-in failed');
@@ -87,7 +85,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await signIn('facebook', {
-        callbackUrl: '/Prateek/dashboard'
+        callbackUrl: '/dashboard'
       });
     } catch (err) {
       setError('Facebook sign-in failed');
@@ -105,17 +103,17 @@ export default function LoginPage() {
               <span className="text-4xl">🧠</span>
             </div>
           </div>
-          
+
           <h1 className="text-6xl font-black text-gray-900 leading-tight">
-            YOUR FACE<br/>
-            SPEAKS.<br/>
+            YOUR FACE<br />
+            SPEAKS.<br />
             WE LISTEN!
           </h1>
-          
+
           <p className="text-2xl font-bold text-gray-800">
             Join our community and start your mental wellness journey today
           </p>
-          
+
           <div className="flex items-center gap-4 pt-4">
             <div className="flex -space-x-3">
               <div className="w-12 h-12 rounded-full bg-blue-400 border-4 border-white"></div>
@@ -291,7 +289,7 @@ export default function LoginPage() {
                 className="w-full px-6 py-4 bg-blue-600 text-white rounded-full font-bold hover:bg-blue-700 transition-all flex items-center justify-center gap-3 shadow-md hover:shadow-lg disabled:opacity-50"
               >
                 <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                 </svg>
                 Continue with Facebook
               </button>
