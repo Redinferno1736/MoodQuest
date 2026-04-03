@@ -230,7 +230,7 @@ const Dashboard = () => {
                 className="w-full p-8 bg-lime-200 hover:bg-lime-300 rounded-3xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-105"
                 style={{ opacity: mounted ? 1 : 0, transform: mounted ? 'translateY(0)' : 'translateY(20px)', transition: 'all 0.6s ease 200ms' }}
               >
-                <h3 className="text-3xl font-black text-gray-800">TODAY'S TIP</h3>
+                <h3 className="text-3xl font-black text-gray-800">TODAY&apos;S TIP</h3>
               </button>
             </Link>
           </div>
