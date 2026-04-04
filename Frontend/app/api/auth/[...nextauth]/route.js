@@ -5,15 +5,19 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { verifyCredentials } from '@/lib/auth';
 
 const handler = NextAuth({
+  debug: true, // helpful during debugging
+
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     }),
+
     FacebookProvider({
       clientId: process.env.FACEBOOK_CLIENT_ID,
       clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
     }),
+
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
@@ -22,9 +26,13 @@ const handler = NextAuth({
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
-        // verifyCredentials must return { id, name, email } or null
-        const user = await verifyCredentials(credentials.email, credentials.password);
-        return user;
+
+        const user = await verifyCredentials(
+          credentials.email,
+          credentials.password
+        );
+
+        return user; // must return { id, name, email } or null
       },
     }),
   ],
@@ -35,34 +43,44 @@ const handler = NextAuth({
   },
 
   callbacks: {
-    // Persist id + name into the JWT token on first sign-in
+    // ✅ SAFE JWT HANDLING
     async jwt({ token, user, account, profile }) {
+      // Credentials login
       if (user) {
-        // Credentials login → user.id set by verifyCredentials
         token.id = user.id;
         token.name = user.name;
       }
-      if (account?.provider === 'google' && profile) {
-        // For OAuth, use the sub (Google UID) as the stable user_id
-        token.id = profile.sub;
-        token.name = profile.name;
+
+      // Google OAuth
+      if (account?.provider === 'google') {
+        if (profile?.sub) {
+          token.id = profile.sub;
+        }
+        if (profile?.name) {
+          token.name = profile.name;
+        }
       }
-      if (account?.provider === 'facebook' && profile) {
-        token.id = profile.id;
-        token.name = profile.name;
+
+      // Facebook OAuth
+      if (account?.provider === 'facebook') {
+        if (profile?.id) {
+          token.id = profile.id;
+        }
+        if (profile?.name) {
+          token.name = profile.name;
+        }
       }
+
       return token;
     },
 
-    // Expose id on the client-side session object
+    // ✅ SAFE SESSION HANDLING
     async session({ session, token }) {
-      if (token) {
-        session.user = {
-          ...session.user,   // preserves email, image etc.
-          id: token.id,
-          name: token.name,
-        };
-      }
+      session.user = {
+        ...session.user,
+        id: token.id || null,
+        name: token.name || session.user?.name,
+      };
       return session;
     },
   },

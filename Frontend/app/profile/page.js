@@ -15,15 +15,31 @@ export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
 
-  // ✅ FIXED: profileData initialises from session, updates when session loads
-  const [profileData, setProfileData] = useState({
-    name: '',
-    email: '',
+  // ✅ FIXED: Editable fields the user can change locally (phone, bio, location)
+  // name and email are always read from session directly — no setState-in-effect needed
+  const [editableFields, setEditableFields] = useState({
     phone: '',
     bio: 'Mental health advocate and wellness enthusiast',
     joinDate: 'January 2024',
     location: ''
   });
+
+  // Convenience: merge session data + local editable fields into one object for the form
+  const profileData = {
+    name: session?.user?.name || '',
+    email: session?.user?.email || '',
+    ...editableFields,
+  };
+
+  const setProfileData = (updater) => {
+    setEditableFields(prev => {
+      const merged = { ...prev, name: session?.user?.name || '', email: session?.user?.email || '' };
+      const next = typeof updater === 'function' ? updater(merged) : updater;
+      // Only persist the editable fields, ignore name/email (those come from session)
+      const { name: _n, email: _e, ...rest } = next;
+      return rest;
+    });
+  };
 
   // ✅ FIXED: Auth guard — redirect if unauthenticated
   useEffect(() => {
@@ -31,17 +47,6 @@ export default function ProfilePage() {
       router.push('/auth/login');
     }
   }, [status, router]);
-
-  // ✅ FIXED: Populate profile fields from real session once loaded
-  useEffect(() => {
-    if (session?.user) {
-      setProfileData(prev => ({
-        ...prev,
-        name: session.user.name || '',
-        email: session.user.email || '',
-      }));
-    }
-  }, [session]);
 
   const handleProfileSave = () => {
     setIsEditing(false);
