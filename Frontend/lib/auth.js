@@ -1,22 +1,19 @@
-import { compare } from 'bcryptjs';
-import { users } from './db';
+import { compare } from "bcryptjs";
+import { getDb } from "./db";
 
 export async function verifyCredentials(email, password) {
-  const user = users.find(u => u.email === email);
-  
-  if (!user) {
-    return null;
-  }
-  
+  const db = await getDb();
+
+  const user = await db.collection("users").findOne({ email });
+
+  if (!user) return null;
+
   const isValid = await compare(password, user.password);
-  
-  if (!isValid) {
-    return null;
-  }
-  
+  if (!isValid) return null;
+
   return {
-    id: user.id,
+    id: user._id.toString(),
     name: user.name,
-    email: user.email
+    email: user.email,
   };
 }

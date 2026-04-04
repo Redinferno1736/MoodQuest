@@ -57,8 +57,11 @@ const handler = NextAuth({
     // Expose id on the client-side session object
     async session({ session, token }) {
       if (token) {
-        session.user.id = token.id;       // ← this is what dashboard reads
-        session.user.name = token.name;
+        session.user = {
+          ...session.user,   // preserves email, image etc.
+          id: token.id,
+          name: token.name,
+        };
       }
       return session;
     },

@@ -1,41 +1,47 @@
-import { hash } from 'bcryptjs';
+import { MongoClient } from "mongodb";
+import { hash } from "bcryptjs";
 
-// Simple in-memory user storage
-// In production, replace with a real database
-export let users = [];
+const uri = process.env.MONGO_URI;
 
+if (!uri) {
+  throw new Error("Please add MONGO_URI to environment variables");
+}
+
+let client;
+let clientPromise;
+
+if (!global._mongoClientPromise) {
+  client = new MongoClient(uri);
+  global._mongoClientPromise = client.connect();
+}
+clientPromise = global._mongoClientPromise;
+
+export async function getDb() {
+  const client = await clientPromise;
+  return client.db("mood_monitor");
+}
+
+// ← ADD THIS — used by /api/auth/signup/route.js
 export async function createUser(name, email, password) {
-  // Check if user exists
-  const existingUser = users.find(u => u.email === email);
+  const db = await getDb();
+
+  const existingUser = await db.collection("users").findOne({ email });
   if (existingUser) {
-    throw new Error('User already exists');
+    throw new Error("User already exists");
   }
-  
-  // Hash password
+
   const hashedPassword = await hash(password, 12);
-  
-  // Create user
-  const user = {
-    id: Date.now().toString(),
+
+  const result = await db.collection("users").insertOne({
     name,
     email,
     password: hashedPassword,
-    createdAt: new Date()
-  };
-  
-  users.push(user);
-  
+    createdAt: new Date(),
+  });
+
   return {
-    id: user.id,
-    name: user.name,
-    email: user.email
+    id: result.insertedId.toString(),
+    name,
+    email,
   };
-}
-
-export function getUserByEmail(email) {
-  return users.find(u => u.email === email);
-}
-
-export function getUserById(id) {
-  return users.find(u => u.id === id);
 }
