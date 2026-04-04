@@ -69,17 +69,17 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleSignIn = async () => {
-    setLoading(true);
-    try {
-      await signIn('google', {
-        callbackUrl: '/dashboard'
-      });
-    } catch (err) {
-      setError('Google sign-in failed');
-      setLoading(false);
-    }
-  };
+const handleGoogleSignIn = async () => {
+  setLoading(true);
+  try {
+    await signIn('google', {
+      callbackUrl: `${window.location.origin}/dashboard`
+    });
+  } catch (err) {
+    setError('Google sign-in failed');
+    setLoading(false);
+  }
+};
 
   const handleFacebookSignIn = async () => {
     setLoading(true);
