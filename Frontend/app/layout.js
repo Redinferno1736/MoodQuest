@@ -13,7 +13,7 @@ export const metadata = {
   title: "MoodQuest",
   description: "Your mental wellness journey",
 };
-
+console.log("NEXTAUTH_URL:", process.env.NEXTAUTH_URL);
 export default async function RootLayout({ children }) {
   const session = await getServerSession();
   
