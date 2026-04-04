@@ -10,8 +10,6 @@ export default function PetPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   
-  // We don't need a ref for the text box anymore, 
-  // but we keep speechRef to manage audio memory
   const speechRef = useRef(null);
 
   // --- CLEANUP AUDIO ON LOAD ---
@@ -56,10 +54,11 @@ export default function PetPage() {
     e.preventDefault();
     if (!input.trim()) return;
     setIsLoading(true);
-    setReply("Thinking..."); // Bubble updates immediately
+    setReply("Thinking...");
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/api/grok", {
+      // ✅ FIXED: Use env variable instead of hardcoded localhost
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/grok`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: input.trim() }),
@@ -92,7 +91,6 @@ export default function PetPage() {
         <Spline scene="https://prod.spline.design/g7UNYT7AVq4LJ3eO/scene.splinecode" />
 
         {/* --- COMIC STYLE SPEECH BUBBLE --- */}
-        {/* We position this absolutely inside the Spline container */}
         <div className="absolute top-10 left-10 right-10 z-20 flex flex-col items-center">
           <div className="relative max-w-2xl bg-white text-gray-800 text-lg font-medium px-8 py-6 rounded-3xl shadow-2xl border-2 border-gray-100 transition-all duration-300">
             

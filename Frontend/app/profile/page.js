@@ -1,40 +1,80 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User, Camera, Save, Edit2 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
-    const params = useParams();
+  // ✅ FIXED: Use real session instead of hardcoded data
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
   const [activeTab, setActiveTab] = useState('profile');
   const [isEditing, setIsEditing] = useState(false);
+
+  // ✅ FIXED: profileData initialises from session, updates when session loads
   const [profileData, setProfileData] = useState({
-    name: 'John Doe',
-    email: 'john.doe@example.com',
-    phone: '+1 234 567 8900',
+    name: '',
+    email: '',
+    phone: '',
     bio: 'Mental health advocate and wellness enthusiast',
     joinDate: 'January 2024',
-    location: 'New York, USA'
+    location: ''
   });
+
+  // ✅ FIXED: Auth guard — redirect if unauthenticated
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      router.push('/auth/login');
+    }
+  }, [status, router]);
+
+  // ✅ FIXED: Populate profile fields from real session once loaded
+  useEffect(() => {
+    if (session?.user) {
+      setProfileData(prev => ({
+        ...prev,
+        name: session.user.name || '',
+        email: session.user.email || '',
+      }));
+    }
+  }, [session]);
 
   const handleProfileSave = () => {
     setIsEditing(false);
-    // Add save logic here
+    // Add save logic here (e.g. PATCH /api/user/profile)
   };
+
+  // ── Loading / unauthenticated gates ──────────────────────────────────────
+  if (status === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100">
+        <Loader2 className="w-12 h-12 animate-spin text-lime-600" />
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-gray-800">
       {/* Sidebar */}
-<div className="w-64 bg-lime-200 flex flex-col">
+      <div className="w-64 bg-lime-200 flex flex-col">
         <div className="bg-gray-900 text-white p-6 text-center">
           <h1 className="text-2xl font-black tracking-wide">DASHBOARD</h1>
-          <p className="text-sm font-bold text-lime-400 mt-2">{params.username}</p>
+          {/* ✅ FIXED: Show real user name from session */}
+          <p className="text-sm font-bold text-lime-400 mt-2">{session?.user?.name}</p>
         </div>
 
         <nav className="flex-1 py-4">
+          {/* ✅ FIXED: Removed hardcoded /Prateek/dashboard link */}
           <Link
-            href={`/Prateek/dashboard`}
+            href="/dashboard"
             onClick={() => setActiveTab('home')}
             className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
               activeTab === 'home' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
@@ -44,7 +84,7 @@ export default function ProfilePage() {
             HOME
           </Link>
           <Link
-            href={`/analysis`}
+            href="/analysis"
             onClick={() => setActiveTab('analysis')}
             className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
               activeTab === 'analysis' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
@@ -54,7 +94,7 @@ export default function ProfilePage() {
             ANALYSIS
           </Link>
           <Link
-            href={`/pet`}
+            href="/pet"
             onClick={() => setActiveTab('pet')}
             className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
               activeTab === 'pet' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
@@ -64,7 +104,7 @@ export default function ProfilePage() {
             PET SUPPORT
           </Link>
           <Link
-            href={`/settings`}
+            href="/settings"
             onClick={() => setActiveTab('settings')}
             className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
               activeTab === 'settings' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
@@ -77,14 +117,14 @@ export default function ProfilePage() {
 
         <div className="border-t-2 border-lime-400">
           <Link
-            href={`/help`}
+            href="/help"
             className="w-full px-6 py-4 text-left font-black text-lg flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300"
           >
             <HelpCircle size={20} />
             HELP
           </Link>
           <Link
-            href={`/profile`}
+            href="/profile"
             className="w-full px-6 py-4 text-left font-black text-lg flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300"
           >
             <User size={20} />
@@ -105,7 +145,11 @@ export default function ProfilePage() {
             <button className="p-3 bg-lime-200 rounded-full hover:bg-lime-300 transition-colors">
               <Bell size={24} className="text-gray-900" />
             </button>
-            <button className="px-8 py-3 bg-lime-500 text-white font-black text-xl rounded-full hover:bg-lime-600 transition-colors">
+            {/* ✅ FIXED: Log out button actually calls signOut */}
+            <button
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="px-8 py-3 bg-lime-500 text-white font-black text-xl rounded-full hover:bg-lime-600 transition-colors"
+            >
               LOG OUT
             </button>
           </div>
@@ -139,6 +183,7 @@ export default function ProfilePage() {
                   )}
                 </div>
                 <div>
+                  {/* ✅ FIXED: Show real name from session */}
                   <h1 className="text-4xl font-black mb-2">{profileData.name}</h1>
                   <p className="text-black text-lg">Member since {profileData.joinDate}</p>
                 </div>
