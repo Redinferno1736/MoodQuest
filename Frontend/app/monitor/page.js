@@ -4,12 +4,6 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 
-/**
- * Monitor page — captures webcam frames, sends each to /api/analyze-frame,
- * accumulates results in a ref-backed buffer (avoids stale-closure bugs in
- * production/strict mode), then POSTs the full buffer to /api/session/save
- * when the user stops.
- */
 const MonitorPage = () => {
   const { data: session } = useSession();
   const router = useRouter();
@@ -18,25 +12,54 @@ const MonitorPage = () => {
   const canvasRef = useRef(null);
   const intervalRef = useRef(null);
   const startTimeRef = useRef(null);
-  // KEY FIX: keep the live buffer in a ref so analyzeFrame always appends to
-  // the latest array without any stale-closure or functional-update tricks.
   const sessionBufferRef = useRef([]);
 
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState('');
   const [currentConfidence, setCurrentConfidence] = useState(0);
-  const [frameCount, setFrameCount] = useState(0); // display only
+  const [frameCount, setFrameCount] = useState(0);
   const [saving, setSaving] = useState(false);
+  // ✅ NEW: surface camera/API errors to the user instead of failing silently
+  const [cameraError, setCameraError] = useState('');
+  const [apiError, setApiError] = useState('');
 
   // ── Start webcam ──────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
+    setCameraError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      // ✅ FIX: explicit constraints help browsers grant permission reliably
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false,
+      });
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+
+        // ✅ FIX: wait for metadata so the video element actually renders
+        // before we start pulling frames from it.
+        await new Promise((resolve, reject) => {
+          videoRef.current.onloadedmetadata = resolve;
+          videoRef.current.onerror = reject;
+        });
+
+        // ✅ FIX: explicitly call play() — autoPlay alone is unreliable in
+        // some production/HTTPS environments when the element is hidden at mount.
+        await videoRef.current.play();
+      }
     } catch (err) {
       console.error('Camera error:', err);
+      if (err.name === 'NotAllowedError') {
+        setCameraError('Camera permission denied. Please allow camera access and try again.');
+      } else if (err.name === 'NotFoundError') {
+        setCameraError('No camera found on this device.');
+      } else {
+        setCameraError(`Camera error: ${err.message}`);
+      }
+      return false; // signal failure
     }
+    return true; // signal success
   }, []);
 
   // ── Stop webcam ───────────────────────────────────────────────────────────
@@ -52,6 +75,10 @@ const MonitorPage = () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
+
+    // ✅ FIX: don't capture if video isn't actually playing yet
+    if (video.readyState < 2) return;
+
     const canvas = canvasRef.current;
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
@@ -61,16 +88,31 @@ const MonitorPage = () => {
 
     canvas.toBlob(async (blob) => {
       if (!blob) return;
+
+      // ✅ FIX: guard against missing env var — show clear error instead of
+      // silently hitting "undefined/api/analyze-frame"
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        setApiError('NEXT_PUBLIC_API_URL is not set. Check your Vercel environment variables.');
+        return;
+      }
+
       const formData = new FormData();
       formData.append('image', blob, 'frame.jpg');
 
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/analyze-frame`, {
+        const res = await fetch(`${apiUrl}/api/analyze-frame`, {
           method: 'POST',
           body: formData,
         });
-        const data = await res.json();
 
+        if (!res.ok) {
+          console.error('Analyze-frame HTTP error:', res.status);
+          return;
+        }
+
+        const data = await res.json();
+        setApiError(''); // clear any previous error on success
         setFaceDetected(data.face_detected);
 
         if (data.face_detected && data.dominant_emotion) {
@@ -80,7 +122,6 @@ const MonitorPage = () => {
           setCurrentEmotion(emotion);
           setCurrentConfidence(confidence);
 
-          // Append to ref-backed buffer — no stale closure, no React batching issues
           sessionBufferRef.current.push({
             emotion,
             confidence: parseFloat(confidence.toFixed(4)),
@@ -90,19 +131,23 @@ const MonitorPage = () => {
         }
       } catch (err) {
         console.error('Frame analysis error:', err);
+        setApiError('Cannot reach backend. Check that your Hugging Face space is running.');
       }
     }, 'image/jpeg', 0.8);
-  }, []); // no deps needed — only refs and setters (both stable)
+  }, []);
 
   // ── Start monitoring ──────────────────────────────────────────────────────
   const startMonitoring = useCallback(async () => {
-    sessionBufferRef.current = []; // reset buffer for new session
+    sessionBufferRef.current = [];
     setFrameCount(0);
     setCurrentEmotion('');
     setCurrentConfidence(0);
     setFaceDetected(false);
+    setApiError('');
 
-    await startCamera();
+    const cameraStarted = await startCamera();
+    if (!cameraStarted) return; // abort if camera failed
+
     startTimeRef.current = Date.now();
     setIsMonitoring(true);
     intervalRef.current = setInterval(analyzeFrame, 500);
@@ -121,12 +166,7 @@ const MonitorPage = () => {
 
     setSaving(true);
     try {
-      const payload = {
-        user_id: session.user.id,
-        duration,
-        frames,
-      };
-
+      const payload = { user_id: session.user.id, duration, frames };
       console.log('💾 Saving session:', payload);
 
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/save`, {
@@ -161,7 +201,6 @@ const MonitorPage = () => {
     stopCamera();
 
     const duration = Math.floor((Date.now() - (startTimeRef.current || Date.now())) / 1000);
-    // Read directly from the ref — always current, no stale closure
     const frames = [...sessionBufferRef.current];
     await saveSession(frames, duration);
   }, [stopCamera, saveSession]);
@@ -174,7 +213,6 @@ const MonitorPage = () => {
     };
   }, [stopCamera]);
 
-  // ── Emotion to emoji helper ───────────────────────────────────────────────
   const emotionEmoji = {
     Happy: '😊', Sad: '😢', Angry: '😠',
     Fear: '😨', Surprise: '😲', Disgust: '🤢', Neutral: '😐',
@@ -185,6 +223,20 @@ const MonitorPage = () => {
       <h1 className="text-5xl font-black text-gray-800 mb-2">MOOD MONITOR</h1>
       <p className="text-xl font-bold text-lime-600 mb-8">Real-time emotion detection</p>
 
+      {/* ✅ NEW: Camera error banner */}
+      {cameraError && (
+        <div className="mb-6 w-full max-w-2xl bg-red-100 border-2 border-red-400 rounded-2xl p-4">
+          <p className="text-red-800 font-bold text-center">⚠️ {cameraError}</p>
+        </div>
+      )}
+
+      {/* ✅ NEW: API error banner */}
+      {apiError && (
+        <div className="mb-6 w-full max-w-2xl bg-orange-100 border-2 border-orange-400 rounded-2xl p-4">
+          <p className="text-orange-800 font-bold text-center">⚠️ {apiError}</p>
+        </div>
+      )}
+
       {/* Video Feed */}
       <div className="relative mb-8 rounded-3xl overflow-hidden shadow-2xl border-4 border-lime-400">
         <video
@@ -192,12 +244,14 @@ const MonitorPage = () => {
           autoPlay
           playsInline
           muted
+          // ✅ FIX: explicit dimensions so the element exists in the layout
+          // even before the stream attaches — prevents the "invisible video" bug
+          width={640}
+          height={480}
           className="w-[640px] h-[480px] object-cover bg-gray-900"
         />
-        {/* Hidden canvas for frame capture */}
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* Overlay */}
         {isMonitoring && (
           <div className="absolute top-4 left-4 flex items-center gap-2">
             <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
@@ -207,7 +261,7 @@ const MonitorPage = () => {
           </div>
         )}
 
-        {isMonitoring && !faceDetected && (
+        {isMonitoring && !faceDetected && !cameraError && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
             <p className="text-white font-black text-2xl">No face detected</p>
           </div>
@@ -253,7 +307,6 @@ const MonitorPage = () => {
         </button>
       </div>
 
-      {/* Buffer info during session */}
       {isMonitoring && (
         <p className="mt-4 text-gray-600 font-bold">
           Capturing every 500ms • {frameCount} frames collected
