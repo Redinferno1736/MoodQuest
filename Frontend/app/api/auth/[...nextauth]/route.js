@@ -36,53 +36,37 @@ const handler = NextAuth({
 
   callbacks: {
     async jwt({ token, user, account, profile }) {
-      // ── First sign-in: account + profile are present ──────────────────────
       if (account && profile) {
         if (account.provider === 'google') {
-          // Upsert Google user into MongoDB so their history is always linked
-          // to a stable document, not just the ephemeral profile.sub string.
+          // profile.sub is permanent — use it directly, no DB lookup needed
+          token.id = profile.sub;
+          token.name = profile.name;
+
+          // Still upsert to DB for storing user info, but don't depend on it for the ID
           try {
             const db = await getDb();
-            const existing = await db.collection('users').findOne({ googleId: profile.sub });
-
-            if (existing) {
-              // User already exists — use their MongoDB _id as the stable id
-              token.id = existing._id.toString();
-            } else {
-              // First-ever Google login — create a document so we have a home
-              // for any future profile data / preferences stored server-side.
-              const result = await db.collection('users').insertOne({
-                googleId: profile.sub,
-                name: profile.name,
-                email: profile.email,
-                createdAt: new Date(),
-              });
-              token.id = result.insertedId.toString();
-            }
+            await db.collection('users').updateOne(
+              { googleId: profile.sub },
+              {
+                $set: { name: profile.name, email: profile.email, updatedAt: new Date() },
+                $setOnInsert: { createdAt: new Date() }
+              },
+              { upsert: true }
+            );
           } catch (err) {
-            // Fallback: use profile.sub so auth still works even if DB is down
             console.error('Google upsert error:', err);
-            token.id = profile.sub;
+            // token.id is already set above — auth still works fine
           }
-
-          token.name = profile.name;
         }
-
         if (account.provider === 'facebook') {
           token.id = profile.id;
           token.name = profile.name;
         }
       }
-
-      // ── Credentials sign-in: user object is returned by authorize() ───────
       if (user && !account?.provider?.match(/google|facebook/)) {
         token.id = user.id;
         token.name = user.name;
       }
-
-      // ── Subsequent calls: token.id is already set — just pass it through ──
-      // (account is null on subsequent calls, so none of the above if-blocks
-      //  fire, and token.id from the previous JWT is preserved automatically)
       return token;
     },
 
