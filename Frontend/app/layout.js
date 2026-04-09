@@ -1,8 +1,7 @@
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import { Luckiest_Guy } from 'next/font/google';
 import { getServerSession } from 'next-auth';
 import SessionProvider from '@/components/SessionProvider';
+import { Luckiest_Guy } from 'next/font/google';
 
 const luckiestGuy = Luckiest_Guy({
   weight: '400',
@@ -13,10 +12,10 @@ export const metadata = {
   title: "MoodQuest",
   description: "Your mental wellness journey",
 };
-console.log("NEXTAUTH_URL:", process.env.NEXTAUTH_URL);
+
 export default async function RootLayout({ children }) {
   const session = await getServerSession();
-  
+
   return (
     <html lang="en">
       <body className={`${luckiestGuy.className} antialiased`}>

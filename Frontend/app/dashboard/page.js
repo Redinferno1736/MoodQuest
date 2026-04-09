@@ -1,12 +1,15 @@
 "use client"
 import { api } from '@/lib/api';
-import React, { useState, useEffect, useCallback } from 'react';
-import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import {
+  Bell, Home, TrendingUp, Heart, Settings, HelpCircle,
+  User, LogOut, ChevronDown, ChevronUp, Camera, BarChart2,
+  PawPrint, ClipboardList, Lightbulb, MessageCircle,
+  Mail, BookOpen, Search, Loader2
+} from 'lucide-react';
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
-import { Loader2, LogOut } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 const Dashboard = () => {
   const { data: session, status } = useSession();
