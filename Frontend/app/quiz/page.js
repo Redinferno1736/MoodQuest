@@ -1,13 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Bell, Home, TrendingUp, Heart, Settings, HelpCircle, User, ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useSession, signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 
 export default function QuizAssessmentPage() {
-  const params = useParams();
-  const [activeTab, setActiveTab] = useState('quiz');
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
   const [selectedQuiz, setSelectedQuiz] = useState(null);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState([]);
@@ -17,6 +21,11 @@ export default function QuizAssessmentPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
+
+  // ── Auth guard ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (status === 'unauthenticated') router.push('/auth/login');
+  }, [status, router]);
 
   // Available questionnaires info
   const quizInfo = {
@@ -48,18 +57,14 @@ export default function QuizAssessmentPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/questionnaire/${quizName}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch questionnaire');
-      }
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/questionnaire/${quizName}`);
+      if (!response.ok) throw new Error('Failed to fetch questionnaire');
       const data = await response.json();
-      
-      // Transform backend format to frontend format
+
       const transformedQuestions = data.questions.map(q => ({
         id: q.id,
         question: q.question,
-        options: q.options.map((val, idx) => {
-          // Map numeric values to descriptive labels
+        options: q.options.map((val) => {
           if (quizName === 'PSS') {
             const labels = ["Never", "Almost never", "Sometimes", "Fairly often", "Very often"];
             return labels[val] || `Option ${val}`;
@@ -72,10 +77,7 @@ export default function QuizAssessmentPage() {
 
       setQuestionnaires(prev => ({
         ...prev,
-        [quizName]: {
-          ...quizInfo[quizName],
-          questions: transformedQuestions
-        }
+        [quizName]: { ...quizInfo[quizName], questions: transformedQuestions }
       }));
     } catch (err) {
       setError(err.message);
@@ -90,21 +92,12 @@ export default function QuizAssessmentPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/questionnaire/submit', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/questionnaire/submit`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: quizName,
-          answers: answerValues
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: quizName, answers: answerValues })
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit questionnaire');
-      }
-
+      if (!response.ok) throw new Error('Failed to submit questionnaire');
       const data = await response.json();
       setResults(data);
       return data;
@@ -119,27 +112,18 @@ export default function QuizAssessmentPage() {
 
   const getResultColor = (interpretation) => {
     const lower = interpretation.toLowerCase();
-    if (lower.includes('minimal') || lower.includes('low')) {
-      return 'from-green-400 to-emerald-500';
-    } else if (lower.includes('mild') || lower.includes('moderate')) {
-      return 'from-yellow-400 to-orange-400';
-    } else if (lower.includes('severe') || lower.includes('high')) {
-      return 'from-red-500 to-red-600';
-    }
+    if (lower.includes('minimal') || lower.includes('low')) return 'from-green-400 to-emerald-500';
+    if (lower.includes('mild') || lower.includes('moderate')) return 'from-yellow-400 to-orange-400';
+    if (lower.includes('severe') || lower.includes('high')) return 'from-red-500 to-red-600';
     return 'from-blue-400 to-blue-500';
   };
 
   const getResultMessage = (interpretation) => {
     const lower = interpretation.toLowerCase();
-    if (lower.includes('minimal') || lower.includes('low')) {
-      return "You're doing great! Keep up with healthy habits.";
-    } else if (lower.includes('mild')) {
-      return "Consider self-care activities and monitoring your mood.";
-    } else if (lower.includes('moderate')) {
-      return "Consider speaking with a healthcare professional.";
-    } else if (lower.includes('severe') || lower.includes('high')) {
-      return "Please seek professional help for support.";
-    }
+    if (lower.includes('minimal') || lower.includes('low')) return "You're doing great! Keep up with healthy habits.";
+    if (lower.includes('mild')) return "Consider self-care activities and monitoring your mood.";
+    if (lower.includes('moderate')) return "Consider speaking with a healthcare professional.";
+    if (lower.includes('severe') || lower.includes('high')) return "Please seek professional help for support.";
     return "Thank you for completing the assessment.";
   };
 
@@ -150,31 +134,21 @@ export default function QuizAssessmentPage() {
     setShowResults(false);
     setSelectedOption(null);
     setResults(null);
-    
-    // Fetch questionnaire if not already loaded
-    if (!questionnaires[quizKey]) {
-      await fetchQuestionnaire(quizKey);
-    }
+    if (!questionnaires[quizKey]) await fetchQuestionnaire(quizKey);
   };
 
-  const handleAnswerSelect = (optionIndex) => {
-    setSelectedOption(optionIndex);
-  };
+  const handleAnswerSelect = (optionIndex) => setSelectedOption(optionIndex);
 
   const handleNext = async () => {
     if (selectedOption !== null) {
       const newAnswers = [...answers, selectedOption];
       setAnswers(newAnswers);
-      
       if (currentQuestion < questionnaires[selectedQuiz].questions.length - 1) {
         setCurrentQuestion(currentQuestion + 1);
         setSelectedOption(null);
       } else {
-        // Submit to backend
         const result = await submitAnswers(selectedQuiz, newAnswers);
-        if (result) {
-          setShowResults(true);
-        }
+        if (result) setShowResults(true);
       }
     }
   };
@@ -206,6 +180,18 @@ export default function QuizAssessmentPage() {
     setResults(null);
   };
 
+  // ── Loading / unauthenticated gates ───────────────────────────────────────
+  if (status === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100">
+        <Loader2 className="w-12 h-12 animate-spin text-lime-600" />
+      </div>
+    );
+  }
+  if (status === 'unauthenticated') return null;
+
+  const userName = session?.user?.name || 'USER';
+
   const renderQuizSelection = () => (
     <div className="p-8">
       <div className="max-w-6xl mx-auto">
@@ -224,7 +210,7 @@ export default function QuizAssessmentPage() {
           {Object.keys(quizInfo).map((key) => {
             const quiz = quizInfo[key];
             return (
-              <div key={key} className={`bg-linear-to-br ${quiz.color} p-8 rounded-3xl shadow-lg text-white transform hover:scale-105 transition-transform cursor-pointer`}>
+              <div key={key} className={`bg-gradient-to-br ${quiz.color} p-8 rounded-3xl shadow-lg text-white transform hover:scale-105 transition-transform cursor-pointer`}>
                 <div className="text-center">
                   <div className="text-6xl mb-4">{quiz.emoji}</div>
                   <h3 className="text-3xl font-black mb-2">{quiz.name}</h3>
@@ -252,7 +238,7 @@ export default function QuizAssessmentPage() {
             <div>
               <h3 className="text-2xl font-black text-gray-900 mb-2">IMPORTANT NOTE</h3>
               <p className="text-gray-700 font-bold leading-relaxed">
-                These assessments are screening tools and do not provide a diagnosis. If you&apos;re experiencing mental health concerns, 
+                These assessments are screening tools and do not provide a diagnosis. If you&apos;re experiencing mental health concerns,
                 please consult with a qualified healthcare professional. Your responses are confidential and stored securely.
               </p>
             </div>
@@ -286,7 +272,7 @@ export default function QuizAssessmentPage() {
             BACK TO QUIZZES
           </button>
 
-          <div className={`bg-linear-to-br ${quiz.color} p-6 rounded-3xl shadow-lg text-white mb-6`}>
+          <div className={`bg-gradient-to-br ${quiz.color} p-6 rounded-3xl shadow-lg text-white mb-6`}>
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-3xl font-black">{quiz.name}</h2>
@@ -298,10 +284,7 @@ export default function QuizAssessmentPage() {
               </div>
             </div>
             <div className="w-full bg-white bg-opacity-30 rounded-full h-3">
-              <div
-                className="bg-white h-3 rounded-full transition-all duration-300"
-                style={{ width: `${progress}%` }}
-              ></div>
+              <div className="bg-white h-3 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
             </div>
           </div>
 
@@ -386,7 +369,7 @@ export default function QuizAssessmentPage() {
             <p className="text-xl text-gray-600 font-bold">{quiz.fullName}</p>
           </div>
 
-          <div className={`bg-linear-to-br ${resultColor} p-8 rounded-3xl shadow-lg text-white mb-6`}>
+          <div className={`bg-gradient-to-br ${resultColor} p-8 rounded-3xl shadow-lg text-white mb-6`}>
             <div className="text-center">
               <p className="text-lg font-bold opacity-90 mb-2">Your Total Score</p>
               <p className="text-7xl font-black mb-4">{results.score}</p>
@@ -459,66 +442,30 @@ export default function QuizAssessmentPage() {
       <div className="w-64 bg-lime-200 flex flex-col">
         <div className="bg-gray-900 text-white p-6 text-center">
           <h1 className="text-2xl font-black tracking-wide">DASHBOARD</h1>
-          <p className="text-sm font-bold text-lime-400 mt-2">{params.username || 'USER'}</p>
+          <p className="text-sm font-bold text-lime-400 mt-2 truncate">{userName}</p>
         </div>
 
         <nav className="flex-1 py-4">
-          <Link
-            href="/Prateek/dashboard"
-            onClick={() => setActiveTab('home')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
-              activeTab === 'home' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-            }`}
-          >
-            <Home size={24} />
-            HOME
+          <Link href="/dashboard" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
+            <Home size={24} />HOME
           </Link>
-          <Link
-            href="/analysis"
-            onClick={() => setActiveTab('analysis')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
-              activeTab === 'analysis' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-            }`}
-          >
-            <TrendingUp size={24} />
-            ANALYSIS
+          <Link href="/analysis" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
+            <TrendingUp size={24} />ANALYSIS
           </Link>
-          <Link
-            href="/pet"
-            onClick={() => setActiveTab('pet')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
-              activeTab === 'pet' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-            }`}
-          >
-            <Heart size={24} />
-            PET SUPPORT
+          <Link href="/pet" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
+            <Heart size={24} />PET SUPPORT
           </Link>
-          <Link
-            href="/settings"
-            onClick={() => setActiveTab('settings')}
-            className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
-              activeTab === 'settings' ? 'bg-lime-600 text-white' : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-            }`}
-          >
-            <Settings size={24} />
-            SETTINGS
+          <Link href="/settings" className="w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300 transition-colors">
+            <Settings size={24} />SETTINGS
           </Link>
         </nav>
 
         <div className="border-t-2 border-lime-400">
-          <Link
-            href="/help"
-            className="w-full px-6 py-4 text-left font-black text-lg flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300"
-          >
-            <HelpCircle size={20} />
-            HELP
+          <Link href="/help" className="w-full px-6 py-4 text-left font-black text-lg flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300">
+            <HelpCircle size={20} />HELP
           </Link>
-          <Link
-            href="/profile"
-            className="w-full px-6 py-4 text-left font-black text-lg flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300"
-          >
-            <User size={20} />
-            PROFILE
+          <Link href="/profile" className="w-full px-6 py-4 text-left font-black text-lg flex items-center gap-3 bg-lime-200 text-gray-900 hover:bg-lime-300">
+            <User size={20} />PROFILE
           </Link>
         </div>
       </div>
@@ -535,7 +482,10 @@ export default function QuizAssessmentPage() {
             <button className="p-3 bg-lime-200 rounded-full hover:bg-lime-300 transition-colors">
               <Bell size={24} className="text-gray-900" />
             </button>
-            <button className="px-8 py-3 bg-lime-500 text-white font-black text-xl rounded-full hover:bg-lime-600 transition-colors">
+            <button
+              onClick={() => signOut({ callbackUrl: '/' })}
+              className="px-8 py-3 bg-lime-500 text-white font-black text-xl rounded-full hover:bg-lime-600 transition-colors"
+            >
               LOG OUT
             </button>
           </div>
