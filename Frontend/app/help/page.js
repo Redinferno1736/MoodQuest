@@ -10,7 +10,7 @@ import {
 import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect } from 'react'; 
 import { Loader2 } from 'lucide-react';
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
