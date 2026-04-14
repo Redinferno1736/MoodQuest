@@ -10,22 +10,15 @@ const Navbar = () => {
 
   return (
     <nav className="bg-[#BDE49F] flex justify-between items-center px-8 py-4">
-      {/* Logo */}
-      <Link
-        href={status === 'authenticated' ? '/dashboard' : '/'}  // ← removed /${session.user.name}
-        className="flex items-center gap-3"
-      >
+      <Link href={status === 'authenticated' ? '/dashboard' : '/'} className="flex items-center gap-3">
         <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md">
           <div className="text-center flex flex-col items-center justify-center">
             <div className="text-3xl leading-none mb-0.5">😊</div>
-            <p className="text-[8px] font-bold text-gray-600 tracking-tight leading-tight">
-              FACE SCAN
-            </p>
+            <p className="text-[8px] font-bold text-gray-600 tracking-tight leading-tight">FACE SCAN</p>
           </div>
         </div>
       </Link>
 
-      {/* Navigation Links */}
       <div className="flex items-center gap-12">
         <ul className="flex items-center gap-8">
           <Link href="/explore">
@@ -44,7 +37,7 @@ const Navbar = () => {
               </svg>
             </li>
           </Link>
-          <Link href="/help">  {/* ← /support → /help (your actual help page) */}
+          <Link href="/help">
             <li className="flex items-center gap-2 font-bold text-black text-xl cursor-pointer hover:text-gray-700">
               SUPPORT
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -55,7 +48,6 @@ const Navbar = () => {
         </ul>
       </div>
 
-      {/* Right Side */}
       <div className="flex items-center gap-6">
         <div className="cursor-pointer hover:opacity-80">
           <svg className="w-8 h-8 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -73,7 +65,7 @@ const Navbar = () => {
               <Link href="/auth/login" className="font-bold text-black text-lg hover:text-gray-700">
                 LOGIN
               </Link>
-              <Link href="/auth/signup" className="bg-gray-900 text-white text-lg px-6 py-3 hover:bg-gray-800">  {/* ← /auth/login → /auth/signup */}
+              <Link href="/auth/signup" className="bg-gray-900 text-white text-lg px-6 py-3 hover:bg-gray-800">
                 SIGN UP
               </Link>
             </>
@@ -99,4 +91,4 @@ const Navbar = () => {
   );
 };
 
-export default Navbar; 
+export default Navbar;
