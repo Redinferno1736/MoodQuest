@@ -1,6 +1,6 @@
 "use client"
 import { api } from '@/lib/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bell, Home, TrendingUp, Heart, Settings, HelpCircle,
   User, LogOut, ChevronDown, ChevronUp, Camera, BarChart2,
