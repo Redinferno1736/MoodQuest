@@ -316,7 +316,7 @@ export default function HelpPage() {
               <div>
                 <h3 className="text-3xl font-black mb-2">STILL NEED HELP?</h3>
                 <p className="font-bold text-lime-100 text-lg">
-                  Can't find what you're looking for? Our support team is here for you.
+                  Can&apos;t find what you&apos;re looking for? Our support team is here for you.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0">

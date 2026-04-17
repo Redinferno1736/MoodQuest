@@ -12,26 +12,25 @@ import { useRouter } from 'next/navigation';
 
 // ─── Sidebar link helper ──────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { href: '/dashboard',  label: 'HOME',        icon: Home       },
-  { href: '/analysis',   label: 'ANALYSIS',    icon: TrendingUp },
-  { href: '/pet',        label: 'PET SUPPORT', icon: Heart      },
-  { href: '/settings',   label: 'SETTINGS',    icon: Settings   },
+  { href: '/dashboard', label: 'HOME', icon: Home },
+  { href: '/analysis', label: 'ANALYSIS', icon: TrendingUp },
+  { href: '/pet', label: 'PET SUPPORT', icon: Heart },
+  { href: '/settings', label: 'SETTINGS', icon: Settings },
 ];
 
 const BOTTOM_NAV = [
-  { href: '/help',    label: 'HELP',    icon: HelpCircle },
-  { href: '/profile', label: 'PROFILE', icon: User       },
+  { href: '/help', label: 'HELP', icon: HelpCircle },
+  { href: '/profile', label: 'PROFILE', icon: User },
 ];
 
 function SidebarLink({ href, label, Icon, active }) {
   return (
     <Link
       href={href}
-      className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${
-        active
+      className={`w-full px-6 py-4 text-left font-black text-xl flex items-center gap-3 transition-colors ${active
           ? 'bg-lime-600 text-white'
           : 'bg-lime-200 text-gray-900 hover:bg-lime-300'
-      }`}
+        }`}
     >
       <Icon size={24} />
       {label}
@@ -57,9 +56,8 @@ function Toast({ message, type, onClose }) {
   }, [onClose]);
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl font-bold text-white transition-all ${
-      type === 'success' ? 'bg-lime-500' : 'bg-red-500'
-    }`}>
+    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl font-bold text-white transition-all ${type === 'success' ? 'bg-lime-500' : 'bg-red-500'
+      }`}>
       {type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
       {message}
     </div>
@@ -103,7 +101,7 @@ function ChangePasswordModal({ onClose, onSave }) {
         <div className="space-y-4">
           {[
             { label: 'Current Password', value: current, set: setCurrent },
-            { label: 'New Password',     value: next,    set: setNext    },
+            { label: 'New Password', value: next, set: setNext },
             { label: 'Confirm Password', value: confirm, set: setConfirm },
           ].map(({ label, value, set }) => (
             <div key={label}>
@@ -192,17 +190,17 @@ export default function SettingsPage() {
   const router = useRouter();
 
   // Prefs state
-  const [notifications,      setNotifications]      = useState(true);
+  const [notifications, setNotifications] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
-  const [darkMode,           setDarkMode]           = useState(false);
-  const [soundEffects,       setSoundEffects]       = useState(true);
-  const [language,           setLanguage]           = useState('english');
-  const [saving,             setSaving]             = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [soundEffects, setSoundEffects] = useState(true);
+  const [language, setLanguage] = useState('english');
+  const [saving, setSaving] = useState(false);
 
   // Modal / toast state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showDeleteModal,   setShowDeleteModal]   = useState(false);
-  const [toast,             setToast]             = useState(null); // { message, type }
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [toast, setToast] = useState(null); // { message, type }
 
   // ── Auth guard ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -213,16 +211,16 @@ export default function SettingsPage() {
   useEffect(() => {
     if (!session?.user?.id) return;
     const saved = localStorage.getItem(`prefs_${session.user.id}`);
-    if (saved) {
-      try {
-        const p = JSON.parse(saved);
-        if (p.notifications      !== undefined) setNotifications(p.notifications);
-        if (p.emailNotifications !== undefined) setEmailNotifications(p.emailNotifications);
-        if (p.darkMode           !== undefined) setDarkMode(p.darkMode);
-        if (p.soundEffects       !== undefined) setSoundEffects(p.soundEffects);
-        if (p.language           !== undefined) setLanguage(p.language);
-      } catch (_) {}
-    }
+    if (!saved) return;
+    try {
+      const p = JSON.parse(saved);
+      // batch all state updates together at the end
+      if (p.notifications !== undefined) setNotifications(p.notifications);
+      if (p.emailNotifications !== undefined) setEmailNotifications(p.emailNotifications);
+      if (p.darkMode !== undefined) setDarkMode(p.darkMode);
+      if (p.soundEffects !== undefined) setSoundEffects(p.soundEffects);
+      if (p.language !== undefined) setLanguage(p.language);
+    } catch (_) { }
   }, [session?.user?.id]);
 
   const savePrefs = () => {
@@ -246,10 +244,10 @@ export default function SettingsPage() {
   }
   if (status === 'unauthenticated') return null;
 
-  const userName  = session.user.name  || 'User';
+  const userName = session.user.name || 'User';
   const userEmail = session.user.email || '—';
-  const userId    = session.user.id;
-  const isGoogle  = !session.user.email?.includes('@') ? false : !!session.user.image; // heuristic
+  const userId = session.user.id;
+  const isGoogle = !session.user.email?.includes('@') ? false : !!session.user.image; // heuristic
 
   return (
     <div className="flex h-screen bg-gray-800">

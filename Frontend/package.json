@@ -19,7 +19,7 @@
     "react-is": "^19.2.0",
     "react-markdown": "^10.1.0",
     "react-webcam": "^7.2.0",
-    "recharts": "^3.3.0"
+    "recharts": "^3.8.1"
   },
   "devDependencies": {
     "@splinetool/react-spline": "^4.1.0",
